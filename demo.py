@@ -19,7 +19,7 @@ def show_image(image, t=0):
     cv2.waitKey(t)
 
 @torch.no_grad()
-def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False):
+def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False, start_end_t=[0.,0.]):
 
     slam = None
     queue = Queue(maxsize=8)
@@ -27,7 +27,7 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
     if os.path.isdir(imagedir):
         reader = Process(target=image_stream, args=(queue, imagedir, calib, stride, skip))
     else:
-        reader = Process(target=video_stream, args=(queue, imagedir, calib, stride, skip))
+        reader = Process(target=video_stream, args=(queue, imagedir, calib, stride, skip, start_end_t))
 
     reader.start()
 
@@ -51,7 +51,6 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
         slam.update()
 
     reader.join()
-    print()
 
     return slam.terminate()
 
@@ -67,6 +66,9 @@ if __name__ == '__main__':
     parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
+    parser.add_argument('--start_t', type=float, default=0.0)
+    parser.add_argument('--end_t', type=float, default=0.0)
+    parser.add_argument('--savefile', type=str, default='')
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
@@ -75,8 +77,11 @@ if __name__ == '__main__':
     print(cfg)
 
 
-    run(cfg, args.network, args.imagedir, args.calib, args.stride, args.skip, args.viz, args.timeit)
+    result = run(cfg, args.network, args.imagedir, args.calib, 
+        args.stride, args.skip, args.viz, args.timeit, [args.start_t, args.end_t])
 
-
+    poses, tstamps, patches, indices, ii, jj, kk = result
+    np.savez(args.savefile, name1=poses, name2=tstamps, name3=patches,
+        name4=indices, name5=ii, name6=jj, name7=kk)
         
 

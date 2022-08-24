@@ -171,7 +171,13 @@ class DPVO:
         if self.viewer is not None:
             self.viewer.join()
 
-        return poses, tstamps
+        patches_np = self.patches_.detach().cpu().numpy()
+        index_np = self.index_.detach().cpu().numpy()
+        ii = self.ii.detach().cpu().numpy()
+        jj = self.jj.detach().cpu().numpy()
+        kk = self.kk.detach().cpu().numpy()
+
+        return [poses, tstamps, patches_np, index_np, ii, jj, kk]
 
     def corr(self, coords, indicies=None):
         """ local correlation volume """
