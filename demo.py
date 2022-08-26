@@ -32,8 +32,8 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
     reader.start()
 
     while 1:
-        (t, image, intrinsics) = queue.get()
-        if t < 0: break
+        (idx, image, intrinsics, t_ns) = queue.get()
+        if idx < 0: break
 
         image = torch.from_numpy(image).permute(2,0,1).cuda()
         intrinsics = torch.from_numpy(intrinsics).cuda()
@@ -45,7 +45,7 @@ def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False
         intrinsics = intrinsics.cuda()
 
         with Timer("SLAM", enabled=timeit):
-            slam(t, image, intrinsics)
+            slam(idx, image, intrinsics, t_ns)
 
     for _ in range(12):
         slam.update()
@@ -59,15 +59,15 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--network', type=str, default='dpvo.pth')
-    parser.add_argument('--imagedir', type=str)
-    parser.add_argument('--calib', type=str)
-    parser.add_argument('--stride', type=int, default=2)
+    parser.add_argument('--imagedir', type=str, default="/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear.MP4")
+    parser.add_argument('--calib', type=str, default="calib/gopro9_linear.txt")
+    parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--skip', type=int, default=0)
-    parser.add_argument('--config', default="config/default.yaml")
+    parser.add_argument('--config', default="config/medium.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
-    parser.add_argument('--start_t', type=float, default=0.0)
-    parser.add_argument('--end_t', type=float, default=0.0)
+    parser.add_argument('--start_t', type=float, default=67.0)
+    parser.add_argument('--end_t', type=float, default=70.0)
     parser.add_argument('--savefile', type=str, default='')
     args = parser.parse_args()
 
@@ -80,8 +80,18 @@ if __name__ == '__main__':
     result = run(cfg, args.network, args.imagedir, args.calib, 
         args.stride, args.skip, args.viz, args.timeit, [args.start_t, args.end_t])
 
-    poses, tstamps, patches, indices, ii, jj, kk = result
-    np.savez(args.savefile, name1=poses, name2=tstamps, name3=patches,
-        name4=indices, name5=ii, name6=jj, name7=kk)
+    all_poses, kf_poses, tstamps, image_stamps_ns, patches, indices, ii, jj, kk, intrinsics = result
+
+    np.savez(args.savefile, 
+        name1=all_poses, 
+        name2=kf_poses,
+        name3=tstamps, 
+        name4=image_stamps_ns, 
+        name5=patches,
+        name6=indices, 
+        name7=ii, 
+        name8=jj, 
+        name9=kk,
+        name10=intrinsics)
         
 

@@ -52,7 +52,7 @@ def video_stream(queue, imagedir, calib, stride, skip=0, start_end_ts=[0.,0.]):
 
     cap = cv2.VideoCapture(imagedir)
 
-    t = 0
+    idx = 0
 
     #for _ in range(skip):
     #    ret, image = cap.read()
@@ -73,8 +73,8 @@ def video_stream(queue, imagedir, calib, stride, skip=0, start_end_ts=[0.,0.]):
             if invalid_images > 400:
                 break
             continue
-        ts_ns = int(1e6*cap.get(cv2.CAP_PROP_POS_MSEC))
-        ts_s = ts_ns*1e-9
+        t_ns = int(1e6*cap.get(cv2.CAP_PROP_POS_MSEC))
+        ts_s = t_ns*1e-9
         if ts_s < start_end_ts[0]:
             continue
         if ts_s > start_end_ts[1] and start_end_ts[1] > start_end_ts[0]:
@@ -88,10 +88,10 @@ def video_stream(queue, imagedir, calib, stride, skip=0, start_end_ts=[0.,0.]):
         h, w, _ = image.shape
         image = image[:h-h%16, :w-w%16]
 
-        queue.put((ts_ns, image, intrinsics))
+        queue.put((idx, image, intrinsics, t_ns))
 
-        t += 1
+        idx += 1
 
-    queue.put((-1, image, intrinsics))
+    queue.put((-1, image, intrinsics, -1))
     cap.release()
 

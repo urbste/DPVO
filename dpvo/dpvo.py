@@ -41,6 +41,7 @@ class DPVO:
         self.image_ = torch.zeros(self.ht, self.wd, 3, dtype=torch.uint8, device="cpu")
 
         self.tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
+        self.image_tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
         self.poses_ = torch.zeros(self.N, 7, dtype=torch.float, device="cuda")
         self.patches_ = torch.zeros(self.N, self.M, 3, self.P, self.P, dtype=torch.float, device="cuda")
         self.intrinsics_ = torch.zeros(self.N, 4, dtype=torch.float, device="cuda")
@@ -163,21 +164,27 @@ class DPVO:
         for i in range(self.n):
             self.traj[self.tstamps_[i].item()] = self.poses_[i]
 
-        poses = [self.get_pose(t) for t in range(self.counter)]
-        poses = lietorch.stack(poses, dim=0)
-        poses = poses.inv().data.cpu().numpy()
+        kf_poses = lietorch.SE3(self.poses_[:self.n])
+        kf_poses = kf_poses.inv().data.cpu().numpy()
+
+        all_poses = [self.get_pose(t) for t in range(self.counter)]
+        all_poses = lietorch.stack(all_poses, dim=0)
+        all_poses = all_poses.inv().data.cpu().numpy()
         tstamps = np.array(self.tlist, dtype=np.float)
 
+        image_tstamps = np.array(self.image_tstamps_[:self.n].cpu().numpy(), dtype=np.long)
         if self.viewer is not None:
             self.viewer.join()
 
-        patches_np = self.patches_.detach().cpu().numpy()
-        index_np = self.index_.detach().cpu().numpy()
+        patches_np = self.patches_[:self.n,...].detach().cpu().numpy()
+        index_np = self.index_[:self.n].detach().cpu().numpy()
         ii = self.ii.detach().cpu().numpy()
         jj = self.jj.detach().cpu().numpy()
         kk = self.kk.detach().cpu().numpy()
 
-        return [poses, tstamps, patches_np, index_np, ii, jj, kk]
+        intrinsics = self.intrinsics_[:self.n,...].detach().cpu().numpy()
+
+        return [all_poses, kf_poses, tstamps, image_tstamps, patches_np, index_np, ii, jj, kk, intrinsics]
 
     def corr(self, coords, indicies=None):
         """ local correlation volume """
@@ -257,6 +264,7 @@ class DPVO:
 
             for i in range(k, self.n-1):
                 self.tstamps_[i] = self.tstamps_[i+1]
+                self.image_tstamps_[i] = self.image_tstamps_[i+1]
                 self.colors_[i] = self.colors_[i+1]
                 self.poses_[i] = self.poses_[i+1]
                 self.patches_[i] = self.patches_[i+1]
@@ -268,7 +276,7 @@ class DPVO:
                 self.fmap2_[0,i%self.mem] = self.fmap2_[0,(i+1)%self.mem]
 
             self.n -= 1
-            self.m-= self.M
+            self.m -= self.M
 
         to_remove = self.ix[self.kk] < self.n - self.cfg.REMOVAL_WINDOW
         self.remove_factors(to_remove)
@@ -321,7 +329,7 @@ class DPVO:
         return flatmeshgrid(torch.arange(t0, t1, device="cuda"),
             torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing='ij')
 
-    def __call__(self, tstamp, image, intrinsics):
+    def __call__(self, tstamp, image, intrinsics, image_tstamp_ns):
         """ track new frame """
 
         if self.viewer is not None:
@@ -339,6 +347,7 @@ class DPVO:
         ### update state attributes ###
         self.tlist.append(tstamp)
         self.tstamps_[self.n] = self.counter
+        self.image_tstamps_[self.n] = image_tstamp_ns
         self.intrinsics_[self.n] = intrinsics / self.RES
 
         # color info for visualization
