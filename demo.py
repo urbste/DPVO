@@ -19,13 +19,13 @@ def show_image(image, t=0):
     cv2.waitKey(t)
 
 @torch.no_grad()
-def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False, start_end_t=[0.,0.]):
+def run(cfg, network, imagedir, calib, stride=1, skip=0, viz=False, timeit=False, start_end_t=[0,0]):
 
     slam = None
     queue = Queue(maxsize=8)
 
     if os.path.isdir(imagedir):
-        reader = Process(target=image_stream, args=(queue, imagedir, calib, stride, skip))
+        reader = Process(target=image_stream, args=(queue, imagedir, calib, stride, skip, start_end_t))
     else:
         reader = Process(target=video_stream, args=(queue, imagedir, calib, stride, skip, start_end_t))
 
@@ -66,8 +66,8 @@ if __name__ == '__main__':
     parser.add_argument('--config', default="config/medium.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
-    parser.add_argument('--start_t', type=float, default=67.0)
-    parser.add_argument('--end_t', type=float, default=70.0)
+    parser.add_argument('--start_t_ns', type=int, default=0)
+    parser.add_argument('--end_t_ns', type=int, default=0)
     parser.add_argument('--savefile', type=str, default='')
     args = parser.parse_args()
 
@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
 
     result = run(cfg, args.network, args.imagedir, args.calib, 
-        args.stride, args.skip, args.viz, args.timeit, [args.start_t, args.end_t])
+        args.stride, args.skip, args.viz, args.timeit, [args.start_t_ns, args.end_t_ns])
 
     all_poses, kf_poses, tstamps, image_stamps_ns, patches, indices, ii, jj, kk, intrinsics = result
 

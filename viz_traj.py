@@ -1,52 +1,30 @@
 import open3d as o3d
 import numpy as np
-from dpvo.lietorch import SE3
-import torch
 import os
 from telemetry_converter import TelemetryImporter
-from natsort import natsorted
-from gps_converter import ECEFtoENU
+
+from utils import load_dataset
 # import GPS data
 
 global_enu_llh0 = 0
 
-def load_dataset(path, telemetry_file, llh0):
 
-    data = np.load(path)
-    poses_w_c = data["name2"]
-    num_kfs = poses_w_c.shape[0]
-    frametimes_slam_ns = data["name4"].astype(np.int64)[:num_kfs]
-    frame_ids = data["name3"][:num_kfs]
-    patches = data["name5"][:num_kfs,...]
-    ii, jj, kk = data["name7"], data["name8"], data["name9"]
-
-    tel_importer = TelemetryImporter()
-    tel_importer.read_gopro_telemetry(telemetry_file)
-    gps_xyz, _ = tel_importer.get_gps_pos_at_frametimes(frametimes_slam_ns)
-    gravity_vectors = tel_importer.get_gravity_vector_at_times(frametimes_slam_ns)
-
-    p_w_c = SE3(torch.tensor(poses_w_c)).translation()[:,0:3]
-    q_w_c = SE3(torch.tensor(poses_w_c)).data[:,3:]
-
-    gps_enu_at_kfs = [ECEFtoENU(gps_xyz[int(key)], llh0) if int(key) in gps_xyz else print(key) for key in frametimes_slam_ns]
-    
-    return p_w_c.numpy(), q_w_c.numpy(), gravity_vectors, np.array(gps_enu_at_kfs, dtype=np.float32)
-
+base_path = "/media/Data/Sparsenet/TestAlignment"
 tel_importer = TelemetryImporter()
-tel_importer.read_gopro_telemetry("/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear.json")
+tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike1_trail1_linear.json"))
 llh01 = tel_importer.telemetry["gps_llh"][0]
 tel_importer = TelemetryImporter()
-tel_importer.read_gopro_telemetry("/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike2_trail1_linear.json")
+tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike2_trail1_linear.json"))
 llh02 = tel_importer.telemetry["gps_llh"][0]
 
-p_w_c1, q_w_c1, grav1, gps1 = load_dataset(
-    "/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/dpvo_result_bike1_trail1_linear.npz",
-    "/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear.json",
+p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
+    os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
+    os.path.join(base_path,"bike1_trail1_linear.json"),
     llh01)
 
-p_w_c2, q_w_c2, grav2, gps2 = load_dataset(
-    "/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/dpvo_result_bike2_trail1_linear.npz",
-    "/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike2_trail1_linear.json",
+p_w_c2, q_w_c2, grav2, gps2, t_ns1 = load_dataset(
+    os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
+    os.path.join(base_path,"bike2_trail1_linear.json"),
     llh02)
 
 
@@ -156,3 +134,6 @@ view_ctl.set_lookat((0, 0, 0))
 
 visualizer.run()
 visualizer.destroy_window()
+
+
+
