@@ -16,19 +16,26 @@ Id = SE3.Identity(1, device="cuda")
 
 
 class DPVOAligner:
-    def __init__(self, cfg, network, ht=480, wd=640, viz=False):
+    def __init__(self, cfg, network, ht, wd, viz=False):
         self.cfg = cfg
         self.load_weights(network)
         self.is_initialized = False
         self.enable_timing = False
         
+        self.ht = ht    # image height
+        self.wd = wd    # image width
+
+        self.reset()
+
+        self.viewer = None
+        if viz:
+            self.start_viewer()
+
+    def reset(self):
         self.n = 0      # number of frames
         self.m = 0      # number of patches
         self.M = self.cfg.PATCHES_PER_FRAME
         self.N = 3 # self.cfg.BUFFER_SIZE
-
-        self.ht = ht    # image height
-        self.wd = wd    # image width
 
         DIM = self.DIM
         RES = self.RES
@@ -63,8 +70,8 @@ class DPVOAligner:
         self.imap_ = torch.zeros(self.mem, self.M, DIM, **kwargs)
         self.gmap_ = torch.zeros(self.mem, self.M, 128, self.P, self.P, **kwargs)
 
-        ht = ht // RES
-        wd = wd // RES
+        ht = self.ht // RES
+        wd = self.wd // RES
 
         self.fmap1_ = torch.zeros(1, self.mem, 128, ht // 1, wd // 1, **kwargs)
         self.fmap2_ = torch.zeros(1, self.mem, 128, ht // 4, wd // 4, **kwargs)
@@ -82,10 +89,6 @@ class DPVOAligner:
 
         # store relative poses for removed frames
         self.delta = {}
-
-        self.viewer = None
-        if viz:
-            self.start_viewer()
 
     def load_weights(self, network):
         # load network from checkpoint file
@@ -328,6 +331,8 @@ class DPVOAligner:
         t1 = self.M * max((self.n - 0), 0)
         return flatmeshgrid(torch.arange(t0, t1, device="cuda"),
             torch.arange(max(self.n-r, 0), self.n, device="cuda"), indexing='ij')
+
+
 
     def __call__(self, tstamp, image, intrinsics, image_tstamp_ns):
         """ track new frame """
