@@ -17,15 +17,15 @@ tel_importer = TelemetryImporter()
 tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike2_trail1_linear.json"))
 llh02 = tel_importer.telemetry["gps_llh"][0]
 
-p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
+map_pts1, p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
     os.path.join(base_path,"bike1_trail1_linear.json"),
-    llh01)
+    llh01, inv_depth_thresh=0.5)
 
-p_w_c2, q_w_c2, grav2, gps2, t_ns1 = load_dataset(
+map_pts2, p_w_c2, q_w_c2, grav2, gps2, t_ns1 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
     os.path.join(base_path,"bike2_trail1_linear.json"),
-    llh02)
+    llh02, inv_depth_thresh=0.5)
 
 
 # find rotation to world frame for first trajectory
@@ -94,9 +94,11 @@ s2 = get_vis_scaler(p_w_c2, gps2)
 norm_vis1 = (s1*R1_to_grav@p_w_c1.T).T
 norm_vis2 = (s2*R2_to_grav@p_w_c2.T).T
 
+map_pts1_norm_vis = (s1*R1_to_grav@map_pts1["points"].T).T
+map_pts2_norm_vis = (s2*R2_to_grav@map_pts2["points"].T).T
+
 norm_gps1 = gps1-gps1[0]
 norm_gps2 = gps2-gps2[0]
-
 
 heading1 = R.from_rotvec([0,0,-get_heading_angle_diff(norm_vis1, norm_gps1)]).as_matrix()
 heading2 = R.from_rotvec([0,0,-get_heading_angle_diff(norm_vis2, norm_gps2)]).as_matrix()
@@ -108,6 +110,23 @@ pcl1.paint_uniform_color([1, 0.706, 1])
 pcl2 = o3d.geometry.PointCloud()
 pcl2.points = o3d.utility.Vector3dVector((heading2@norm_vis2.T).T)
 pcl2.paint_uniform_color([1, 1,  0.706])
+
+map_pts_pcl1 = o3d.geometry.PointCloud()
+map_pts_pcl1.points = o3d.utility.Vector3dVector((heading1@map_pts1_norm_vis.T).T)
+map_pts_pcl1.colors = o3d.utility.Vector3dVector(map_pts1["colors"].reshape(-1,3)/255.)
+map_pts_pcl2 = o3d.geometry.PointCloud()
+map_pts_pcl2.points = o3d.utility.Vector3dVector((heading2@map_pts2_norm_vis.T).T)
+map_pts_pcl2.colors = o3d.utility.Vector3dVector(map_pts2["colors"].reshape(-1,3)/255.)
+
+map_pts_pcl1.estimate_normals()
+map_pts_pcl2.estimate_normals()
+
+o3d.io.write_point_cloud(os.path.join(base_path,"pcl1.ply"), map_pts_pcl1)
+
+# radii = [1]
+# mesh1 = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+#     map_pts_pcl1, o3d.utility.DoubleVector(radii))
+# mesh1.compute_vertex_normals()
 
 gps_pcl1 = o3d.geometry.PointCloud()
 gps_pcl1.points = o3d.utility.Vector3dVector(gps1-gps1[0])
@@ -122,9 +141,12 @@ world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=[
 visualizer = o3d.visualization.Visualizer()
 visualizer.create_window(width=600, height=500, left=450, top=250)
 visualizer.add_geometry(pcl1)
-visualizer.add_geometry(pcl2)
+#visualizer.add_geometry(pcl2)
+visualizer.add_geometry(map_pts_pcl1)
+#visualizer.add_geometry(mesh1)
+#visualizer.add_geometry(map_pts_pcl2)
 visualizer.add_geometry(gps_pcl1)
-visualizer.add_geometry(gps_pcl2)
+#visualizer.add_geometry(gps_pcl2)
 visualizer.add_geometry(world_frame)
 
 view_ctl = visualizer.get_view_control()
@@ -134,6 +156,5 @@ view_ctl.set_lookat((0, 0, 0))
 
 visualizer.run()
 visualizer.destroy_window()
-
 
 

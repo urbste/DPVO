@@ -87,6 +87,20 @@ class DPVO:
         if viz:
             self.start_viewer()
 
+    def load_trajectory(self, path_to_npz):
+        data = np.load(path_to_npz)
+
+        self.ii = torch.tensor(data["name7"]).long().cuda()
+        self.jj = torch.tensor(data["name8"]).long().cuda()
+        self.kk = torch.tensor(data["name9"]).long().cuda()
+        self.index_ = torch.tensor(data["name6"]).long().cuda()
+        self.patches_ = torch.tensor(data["name5"]).float().cuda()
+        self.poses_ = torch.tensor(data["name2"]).float().cuda()
+        self.intrinsics_ = torch.tensor(data["name10"]).float().cuda()
+        self.tstamps_ = torch.tensor(data["name3"]).long().cuda()
+        self.image_tstamps_ = torch.tensor(data["name4"]).long().cuda()
+
+
     def load_weights(self, network):
         # load network from checkpoint file
         if isinstance(network, str):
@@ -170,21 +184,32 @@ class DPVO:
         all_poses = [self.get_pose(t) for t in range(self.counter)]
         all_poses = lietorch.stack(all_poses, dim=0)
         all_poses = all_poses.inv().data.cpu().numpy()
-        tstamps = np.array(self.tlist, dtype=np.float)
 
-        image_tstamps = np.array(self.image_tstamps_[:self.n].cpu().numpy(), dtype=np.long)
+        out_dict = {
+            "all_poses": all_poses,
+            "kf_poses": kf_poses, 
+            "tstamps": np.array(self.tlist, dtype=np.float),
+            "image_tstamps": np.array(self.image_tstamps_[:self.n].cpu().numpy(), dtype=np.long),
+            "patches": self.patches_[:self.n,...].detach().cpu().numpy(),
+            "ix": self.index_[:self.n].detach().cpu().numpy(),
+            "ii": self.ii.detach().cpu().numpy(),
+            "jj": self.jj.detach().cpu().numpy(),
+            "kk": self.kk.detach().cpu().numpy(),
+            "intrinsics": self.intrinsics_[:self.n,...].detach().cpu().numpy(),
+            "points": self.points_[:self.n*self.M].detach().cpu().numpy(),
+            "pt_colors": self.colors_[:self.n].detach().cpu().numpy()
+        }
+
+        out_dict["images"] = self.image_[:self.n,...].detach().numpy()
+        out_dict["fmap1"] = self.fmap1_[:self.n,...].detach().cpu().numpy()
+        out_dict["fmap2"] = self.fmap2_[:self.n,...].detach().cpu().numpy()
+        out_dict["imap"] = self.imap_[:self.n,...].detach().cpu().numpy()
+        out_dict["gmap"] = self.gmap_[:self.n,...].detach().cpu().numpy()
+
         if self.viewer is not None:
             self.viewer.join()
 
-        patches_np = self.patches_[:self.n,...].detach().cpu().numpy()
-        index_np = self.index_[:self.n].detach().cpu().numpy()
-        ii = self.ii.detach().cpu().numpy()
-        jj = self.jj.detach().cpu().numpy()
-        kk = self.kk.detach().cpu().numpy()
-
-        intrinsics = self.intrinsics_[:self.n,...].detach().cpu().numpy()
-
-        return [all_poses, kf_poses, tstamps, image_tstamps, patches_np, index_np, ii, jj, kk, intrinsics]
+        return out_dict
 
     def corr(self, coords, indicies=None):
         """ local correlation volume """

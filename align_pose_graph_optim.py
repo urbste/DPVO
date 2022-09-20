@@ -22,12 +22,12 @@ tel_importer = TelemetryImporter()
 tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike2_trail1_linear.json"))
 llh02 = tel_importer.telemetry["gps_llh"][0]
 
-p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
+map_pts1, p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
     os.path.join(base_path,"bike1_trail1_linear.json"),
     llh01)
 
-p_w_c2, q_w_c2, grav2, gps2, t_ns2 = load_dataset(
+map_pts2, p_w_c2, q_w_c2, grav2, gps2, t_ns2 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
     os.path.join(base_path,"bike2_trail1_linear.json"),
     llh02)
@@ -153,19 +153,19 @@ pcl2.paint_uniform_color([0, 1,  0])
 
 world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=[0, 0, 0])
 
-visualizer = o3d.visualization.Visualizer()
-visualizer.create_window(width=600, height=500, left=450, top=250)
-visualizer.add_geometry(pcl1)
-visualizer.add_geometry(pcl2)
-visualizer.add_geometry(world_frame)
+# visualizer = o3d.visualization.Visualizer()
+# visualizer.create_window(width=600, height=500, left=450, top=250)
+# visualizer.add_geometry(pcl1)
+# visualizer.add_geometry(pcl2)
+# visualizer.add_geometry(world_frame)
 
-view_ctl = visualizer.get_view_control()
-view_ctl.set_front((1, 0, 0))
-view_ctl.set_up((0, 0, 1))  # can't set z-axis as the up-axis
-view_ctl.set_lookat((0, 0, 0))
+# view_ctl = visualizer.get_view_control()
+# view_ctl.set_front((1, 0, 0))
+# view_ctl.set_up((0, 0, 1))  # can't set z-axis as the up-axis
+# view_ctl.set_lookat((0, 0, 0))
 
-visualizer.run()
-visualizer.destroy_window()
+# visualizer.run()
+# visualizer.destroy_window()
 
 # # scale trajectory
 # scale_gps = np.linalg.norm(gps1[-1] - gps1[0])
@@ -182,17 +182,14 @@ ids = o3d.utility.Vector2iVector(np.array([np.arange(0,n_pts),np.arange(0,n_pts)
 
 trafo_est = o3d.pipelines.registration.TransformationEstimationPointToPoint(with_scaling=1)
 T_gps_cam = trafo_est.compute_transformation(pcl1, gps_pcl, ids)
-
+T_gps_cam = np.eye(4)
 
 # write transformed trajectories
-
-
-
 def get_result_dict(traj_p, traj_q, t_ns, T_gps_cam):
     out_dict = {"p_w_c": [], "q_w_c": [], "t_ns": []}
     # transform trajectories
     for i in range(len(traj_q)):
-        T_gps = T_gps_cam[:3,:3] @ SE3_from_t_q(traj_p[i], traj_q[i]).matrix()
+        T_gps = T_gps_cam @ SE3_from_t_q(traj_p[i], traj_q[i]).matrix().numpy()
         out_dict["p_w_c"].append(T_gps[:3,3].tolist())
         out_dict["q_w_c"].append(R.from_matrix(T_gps[:3,:3]).as_quat().tolist())
         out_dict["t_ns"].append(t_ns[i])
@@ -201,8 +198,42 @@ def get_result_dict(traj_p, traj_q, t_ns, T_gps_cam):
 aligned_trajectories = {
     "traj1": get_result_dict(traj1_ts, traj1_qs, t_ns1, T_gps_cam),
     "traj2": get_result_dict(traj2_ts, traj2_qs, t_ns2, T_gps_cam),
-    "llho": llh01.tolist()
+    "llho": llh01
 }
 
+# transform 3D scene
+map_pts_world = T_gps_cam[:3,:3] @ map_pts1["points"].T + T_gps_cam[:3,[3]]
+aligned_trajectories["world_points"] = map_pts_world.T.tolist()
+aligned_trajectories["world_points_color"] = (map_pts1["colors"] / 255).tolist()
+
+# sa
 a_file = open(os.path.join(base_path,"aligned_trajectories.dict"), "wb")
 pickle.dump(aligned_trajectories, a_file)
+
+
+traj1 = o3d.geometry.PointCloud()
+traj1.points = o3d.utility.Vector3dVector(np.asarray(aligned_trajectories["traj1"]["p_w_c"]))
+traj1.paint_uniform_color([1, 0, 0])
+traj2 = o3d.geometry.PointCloud()
+traj2.points = o3d.utility.Vector3dVector(np.asarray(aligned_trajectories["traj2"]["p_w_c"]))
+traj2.paint_uniform_color([0, 1,  0])
+map_pts = o3d.geometry.PointCloud()
+map_pts.points = o3d.utility.Vector3dVector(np.asarray(aligned_trajectories["world_points"]))
+map_pts.colors = o3d.utility.Vector3dVector(np.asarray(aligned_trajectories["world_points_color"]))
+
+world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=[0, 0, 0])
+
+visualizer = o3d.visualization.Visualizer()
+visualizer.create_window(width=600, height=500, left=450, top=250)
+visualizer.add_geometry(traj1)
+visualizer.add_geometry(traj2)
+visualizer.add_geometry(map_pts)
+#visualizer.add_geometry(world_frame)
+
+view_ctl = visualizer.get_view_control()
+# view_ctl.set_front((1, 0, 0))
+# view_ctl.set_up((0, 0, 1))  # can't set z-axis as the up-axis
+# view_ctl.set_lookat((0, 0, 0))
+
+visualizer.run()
+visualizer.destroy_window()

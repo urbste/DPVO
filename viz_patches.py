@@ -1,19 +1,21 @@
-import open3d as o3d
+import os
 import numpy as np
 from dpvo.lietorch import SE3
 import torch
+
+base_path = "/media/Data/Sparsenet/TestAlignment"
 
 
 def load_dataset(path):
 
     data = np.load(path)
-    poses_w_c = data["name2"]
+    poses_w_c = data["kf_poses"]
     num_kfs = poses_w_c.shape[0]
-    frametimes_slam_ns = data["name4"].astype(np.int64)[:num_kfs]
-    frame_ids = data["name3"][:num_kfs]
-    patches = data["name5"][:num_kfs,...]
-    ii, jj, kk = data["name7"], data["name8"], data["name9"]
-    intr = data["name10"]
+    frametimes_slam_ns = data["image_tstamps"].astype(np.int64)[:num_kfs]
+    frame_ids = data["tstamps"][:num_kfs]
+    patches = data["patches"][:num_kfs,...]
+    ii, jj, kk = data["ii"], data["jj"], data["kk"]
+    intr = data["intrinsics"]
 
     se3_poses = SE3(torch.tensor(poses_w_c).unsqueeze(0))
     p_w_c = se3_poses.translation()[:,0:3]
@@ -22,7 +24,8 @@ def load_dataset(path):
     return p_w_c.numpy(), q_w_c.numpy(), poses_w_c, patches, ii, jj, kk, frametimes_slam_ns, intr
 
 
-p, q, se3_poses, patches, ii, jj, kk, t_ns, intr = load_dataset("/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/dpvo_result_bike1_trail1_linear.npz")
+p, q, se3_poses, patches, ii, jj, kk, t_ns, intr = \
+    load_dataset(os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"))
 
 import cv2
 
@@ -38,7 +41,7 @@ num_patches_per_img = patches.shape[1]
 total_num_patches = patches.shape[0]*patches.shape[1]
 flattened_patches = torch.tensor(patches).view(1, total_num_patches, 3, 3, 3)
 
-Ii = cv2.imread("/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear_imgs/"+str(t_ns[start_id])+".png")
+Ii = cv2.imread(os.path.join(base_path,"bike1_trail1_linear_imgs",str(t_ns[start_id])+".png"))
 
 # plot 64 points
 def plot_points(img, img_pts):
@@ -65,7 +68,7 @@ cv2.waitKey(0)
 
 # now project to next frames
 for idx, t in enumerate(t_ns[start_id-win_size:start_id+win_size]):
-    Ij = cv2.imread("/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear_imgs/"+str(t)+".png")
+    Ij = cv2.imread(os.path.join(base_path,"bike1_trail1_linear_imgs",str(t)+".png"))
 
     i = torch.zeros((num_patches_per_img)) + start_id
     j = i + (idx - win_size)

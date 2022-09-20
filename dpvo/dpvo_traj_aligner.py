@@ -176,16 +176,16 @@ class DPVOAligner:
         tstamps = np.array(self.tlist, dtype=np.float)
 
         image_tstamps = np.array(self.image_tstamps_[:self.n].cpu().numpy(), dtype=np.long)
-        if self.viewer is not None:
-            self.viewer.join()
 
         patches_np = self.patches_[:self.n,...].detach().cpu().numpy()
         index_np = self.index_[:self.n].detach().cpu().numpy()
-        ii = self.ii.detach().cpu().numpy()
-        jj = self.jj.detach().cpu().numpy()
-        kk = self.kk.detach().cpu().numpy()
-
+        ii = self.ii[:self.m].detach().cpu().numpy()
+        jj = self.jj[:self.m].detach().cpu().numpy()
+        kk = self.kk[:self.m].detach().cpu().numpy()
         intrinsics = self.intrinsics_[:self.n,...].detach().cpu().numpy()
+
+        if self.viewer is not None:
+            self.viewer.join()
 
         return [all_poses, kf_poses, tstamps, image_tstamps, patches_np, index_np, ii, jj, kk, intrinsics]
 

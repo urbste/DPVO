@@ -69,6 +69,7 @@ if __name__ == '__main__':
     parser.add_argument('--start_t_ns', type=int, default=0)
     parser.add_argument('--end_t_ns', type=int, default=0)
     parser.add_argument('--savefile', type=str, default='')
+    parser.add_argument('--save_mapfile', type=str, default='')
     args = parser.parse_args()
 
     cfg.merge_from_file(args.config)
@@ -80,18 +81,25 @@ if __name__ == '__main__':
     result = run(cfg, args.network, args.imagedir, args.calib, 
         args.stride, args.skip, args.viz, args.timeit, [args.start_t_ns, args.end_t_ns])
 
-    all_poses, kf_poses, tstamps, image_stamps_ns, patches, indices, ii, jj, kk, intrinsics = result
-
     np.savez(args.savefile, 
-        name1=all_poses, 
-        name2=kf_poses,
-        name3=tstamps, 
-        name4=image_stamps_ns, 
-        name5=patches,
-        name6=indices, 
-        name7=ii, 
-        name8=jj, 
-        name9=kk,
-        name10=intrinsics)
-        
+        all_poses=result["all_poses"], 
+        kf_poses=result["kf_poses"],
+        tstamps=result["tstamps"], 
+        image_tstamps=result["image_tstamps"], 
+        patches=result["patches"], 
+        ix=result["ix"], 
+        ii=result["ii"],  
+        jj=result["jj"], 
+        kk=result["kk"], 
+        intrinsics=result["intrinsics"],
+        points=result["points"],
+        pt_colors=result["pt_colors"])
+
+    np.savez(args.save_mapfile, 
+        images=result["images"], 
+        fmap1=result["fmap1"],
+        fmap2=result["fmap2"], 
+        imap=result["imap"],
+        gmap=result["gmap"])
+    
 
