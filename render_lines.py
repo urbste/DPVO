@@ -15,6 +15,8 @@ import Ogre
 import Ogre.Bites
 import Ogre.RTShader
 
+from utils import load_dataset
+
 def set_camera_intrinsics(cam, K, imsize):
     cam.setAspectRatio(imsize[0]/imsize[1])
 
@@ -39,10 +41,11 @@ def create_traj_line(name, mat_name, scn_mgr, pos, color):
     line_mat.getTechnique(0).getPass(0).setAmbient(0.5,0.5,0.5)
     line_mat.getTechnique(0).getPass(0).setSelfIllumination(color[0],color[1],color[2])
     line_mat.getTechnique(0).getPass(0).setPointSize(5.)
+    line_mat.getTechnique(0).getPass(0).setLineWidth(5.)
 
-    line_obj.begin(mat_name, Ogre.RenderOperation.OT_POINT_LIST)
+    line_obj.begin(mat_name, Ogre.RenderOperation.OT_LINE_LIST)
     for i in range(pos.shape[0]):
-       line_obj.position(pos[i,:]-np.array([0,0,-0.8]))
+       line_obj.position(pos[i,:])
     line_obj.end()
 
     line_node.attachObject(line_obj)
@@ -79,6 +82,14 @@ def main(ctx):
 
     a_file = open(os.path.join(base_path,"aligned_trajectories.dict"), "rb")
     traj = pickle.load(a_file)
+    a_file.close()
+
+    dataset1 = load_dataset(
+        os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
+        os.path.join(base_path,"bike1_trail1_linear.json"),
+        np.array([50.9398978, 11.621137, 298.571]), inv_depth_thresh=0.5, 
+        scale_with_gps=True, align_with_grav=True, correct_heading=False)
+
 
     timestamps1 = traj["traj1"]["t_ns"]
     p1 = np.array(traj["traj1"]["p_w_c"])
@@ -86,6 +97,7 @@ def main(ctx):
 
     p2 = np.array(traj["traj2"]["p_w_c"])
     q2 = np.array(traj["traj2"]["q_w_c"])
+
 
 
     cfg = Ogre.ConfigFile()
@@ -101,32 +113,24 @@ def main(ctx):
     scn_mgr = ctx.getRoot().createSceneManager()
     Ogre.RTShader.ShaderGenerator.getSingleton().addSceneManager(scn_mgr)
 
-    cam1= scn_mgr.createCamera("camera1")
-    cam1.setNearClipDistance(0.01)
-    cam1.setFarClipDistance(1.5)
-    win = ctx.getRenderWindow().addViewport(cam1)
+    cam= scn_mgr.createCamera("camera1")
+    cam.setNearClipDistance(0.01)
+    cam.setFarClipDistance(1.5)
+    win = ctx.getRenderWindow().addViewport(cam)
 
-    cam2 = scn_mgr.createCamera("camera2")
-    cam2.setNearClipDistance(0.01)
-    cam2.setFarClipDistance(1.5)
-    win = ctx.getRenderWindow().addViewport(cam2)
-
-    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1, [1,1,1])
+    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,-1.25]), [1,0,0])
     line1_node.setVisible(True)
 
-    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2, [1,0,0])
+    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,-1.25]), [0,1,0])
     line2_node.setVisible(True)
 
-    camnode1 = scn_mgr.getRootSceneNode().createChildSceneNode()
-    camnode2 = scn_mgr.getRootSceneNode().createChildSceneNode()
+    camnode = scn_mgr.getRootSceneNode().createChildSceneNode()
 
     # convert OpenCV to OGRE coordinate system
     # camnode.rotate((1, 0, 0), math.pi)
-    camnode1.attachObject(cam1)
-    camnode2.attachObject(cam2)
+    camnode.attachObject(cam)
 
-    set_camera_intrinsics(cam1, K, imsize)
-    set_camera_intrinsics(cam2, K, imsize)
+    set_camera_intrinsics(cam, K, imsize)
 
     bgtex = create_image_background(scn_mgr)
 
@@ -160,7 +164,7 @@ def main(ctx):
         #ax = Ogre.Vector3(*rvec)
         #ang = ax.normalise()
         #marker_node.setOrientation(Ogre.Quaternion(ang, ax))
-        marker_node.setPosition(p1[i,:]-np.array([0,1,-0.5]))
+        #marker_node.setPosition(p1[i,:]-np.array([0,1,-0.5]))
         mesh_node.setVisible(True)
 
         camnode.setOrientation(Ogre.Quaternion(*rvec))

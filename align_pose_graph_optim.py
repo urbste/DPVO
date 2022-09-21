@@ -22,15 +22,15 @@ tel_importer = TelemetryImporter()
 tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike2_trail1_linear.json"))
 llh02 = tel_importer.telemetry["gps_llh"][0]
 
-map_pts1, p_w_c1, q_w_c1, grav1, gps1, t_ns1 = load_dataset(
+dataset1 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
     os.path.join(base_path,"bike1_trail1_linear.json"),
-    llh01)
+    llh01, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=False)
 
-map_pts2, p_w_c2, q_w_c2, grav2, gps2, t_ns2 = load_dataset(
+dataset2 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
     os.path.join(base_path,"bike2_trail1_linear.json"),
-    llh02)
+    llh02, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=False)
 
 
 # read relative constrain    
@@ -38,7 +38,6 @@ import gtsam
 import gtsam.utils.plot as gtsam_plot
 
 # add poses and odometry constrains
-
 def SE3_from_t_q(t,q):
     return SE3(torch.tensor(np.array([t[0],t[1],t[2],q[0],q[1],q[2],q[3]])))
 
@@ -49,13 +48,9 @@ def Pose3_from_SE3(se3):
 graph = gtsam.NonlinearFactorGraph()
 initial_estimate = gtsam.Values()
 
-PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([1,1,1,1,1,1]))
-
+PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-6,1e-6,1e-6,1e-6,1e-6,1e-6]))
 ODOMETRY_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([1.,1.,1.,1.,1.,1.]))
-
-GT_ODOMETRY_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-3,1e-3,1e-3,1e-3,1e-3,1e-3]))
-
-GPS_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([5, 5, 10]))
+GT_ODOMETRY_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([1e-5,1e-5,1e-5,1e-5,1e-5,1e-5]))
 
 # read matching keyframe timestamps csv file
 rel_constr_dict = pickle.load(open(os.path.join(base_path,"relative_trafos.dict"),"rb"))
@@ -74,6 +69,14 @@ t_ns1_to_vertex_idx = {}
     
 #     t_ns1_to_vertex_idx[t_ns_1] = vtx_cnt
 #     vtx_cnt += 1
+
+t_ns1 = np.array(dataset1["frametimes_ns"])
+t_ns2 = np.array(dataset2["frametimes_ns"])
+
+p_w_c1 = np.array(dataset1["p_w_c"])
+p_w_c2 = np.array(dataset2["p_w_c"])
+q_w_c1 = np.array(dataset1["q_w_c"])
+q_w_c2 = np.array(dataset2["q_w_c"])
 
 for i in range(0,p_w_c1.shape[0]):
     # Add the prior factor to the factor graph, and poorly initialize the prior pose to demonstrate
@@ -172,16 +175,16 @@ world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=5, origin=[
 # scale_vis = np.linalg.norm(p_w_c1[-1] - p_w_c1[0])
 # scale = scale_gps / scale_vis
 
-# transform traj to gps space
-gps_pcl = o3d.geometry.PointCloud()
-gps_pcl.points = o3d.utility.Vector3dVector(np.asarray(gps1))
-gps_pcl.paint_uniform_color([0, 0, 1])
+# # transform traj to gps space
+# gps_pcl = o3d.geometry.PointCloud()
+# gps_pcl.points = o3d.utility.Vector3dVector(np.asarray(gps1))
+# gps_pcl.paint_uniform_color([0, 0, 1])
 
-n_pts = gps1.shape[0]
-ids = o3d.utility.Vector2iVector(np.array([np.arange(0,n_pts),np.arange(0,n_pts)]).T)
+# n_pts = gps1.shape[0]
+# ids = o3d.utility.Vector2iVector(np.array([np.arange(0,n_pts),np.arange(0,n_pts)]).T)
 
-trafo_est = o3d.pipelines.registration.TransformationEstimationPointToPoint(with_scaling=1)
-T_gps_cam = trafo_est.compute_transformation(pcl1, gps_pcl, ids)
+# trafo_est = o3d.pipelines.registration.TransformationEstimationPointToPoint(with_scaling=1)
+# T_gps_cam = trafo_est.compute_transformation(pcl1, gps_pcl, ids)
 T_gps_cam = np.eye(4)
 
 # write transformed trajectories
@@ -202,14 +205,14 @@ aligned_trajectories = {
 }
 
 # transform 3D scene
-map_pts_world = T_gps_cam[:3,:3] @ map_pts1["points"].T + T_gps_cam[:3,[3]]
-aligned_trajectories["world_points"] = map_pts_world.T.tolist()
-aligned_trajectories["world_points_color"] = (map_pts1["colors"] / 255).tolist()
+#map_pts_world = T_gps_cam[:3,:3] @ map_pts1["points"].T + T_gps_cam[:3,[3]]
+aligned_trajectories["world_points"] = np.array(dataset1["points"])
+aligned_trajectories["world_points_color"] = np.array(dataset1["colors"])
 
 # sa
 a_file = open(os.path.join(base_path,"aligned_trajectories.dict"), "wb")
 pickle.dump(aligned_trajectories, a_file)
-
+a_file.close()
 
 traj1 = o3d.geometry.PointCloud()
 traj1.points = o3d.utility.Vector3dVector(np.asarray(aligned_trajectories["traj1"]["p_w_c"]))
