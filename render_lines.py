@@ -17,6 +17,8 @@ import Ogre.RTShader
 
 from utils import load_dataset
 
+import time
+
 def set_camera_intrinsics(cam, K, imsize):
     cam.setAspectRatio(imsize[0]/imsize[1])
 
@@ -69,34 +71,40 @@ def create_image_background(scn_mgr):
 
 def main(ctx):
 
-    base_path = "/media/Data/Sparsenet/TestAlignment"
-    path_traj1 = os.path.join(base_path,"bike1_trail1_linear_imgs")
-    path_traj2 = os.path.join(base_path,"bike2_trail1_linear_imgs")
+    base_path = "/media/Data/Sparsenet/Ammerbach/Links"
+    path_traj1 = os.path.join(base_path,"run1")
+    path_traj2 = os.path.join(base_path,"run2")
 
-    imsize = (480, 270)
+    imsize = (640, 480)
 
-    K = np.diag([220.0231432155, 220.0231432155, 1.]) 
-    K[0,2] = 239.93332926325
-    K[1,2] = 138.0109115325
+    K = np.diag([297.4347120333558, 297.4347120333558, 1.]) 
+    K[0,2] =  323.609635667
+    K[1,2] =  237.52771880186
     K = cv2.getDefaultNewCameraMatrix(K, imsize, True)
 
-    a_file = open(os.path.join(base_path,"aligned_trajectories.dict"), "rb")
-    traj = pickle.load(a_file)
-    a_file.close()
+    #a_file = open(os.path.join(base_path,"aligned_trajectories.dict"), "rb")
+    #traj = pickle.load(a_file)
+    #a_file.close()
 
     dataset1 = load_dataset(
-        os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
-        os.path.join(base_path,"bike1_trail1_linear.json"),
+        os.path.join(base_path,"dpvo_result_run1.npz"),
+        os.path.join(base_path,"run1.json"),
         np.array([50.9398978, 11.621137, 298.571]), inv_depth_thresh=0.5, 
         scale_with_gps=True, align_with_grav=True, correct_heading=False)
 
 
-    timestamps1 = traj["traj1"]["t_ns"]
-    p1 = np.array(traj["traj1"]["p_w_c"])
-    q1 = np.array(traj["traj1"]["q_w_c"])
+    timestamps1 = dataset1["frametimes_ns"] #traj["traj1"]["t_ns"]
+    p1 = np.array(dataset1["p_w_c"])
+    q1 = np.array(dataset1["q_w_c"])
 
-    p2 = np.array(traj["traj2"]["p_w_c"])
-    q2 = np.array(traj["traj2"]["q_w_c"])
+    # p2 = np.array(traj["traj2"]["p_w_c"])
+    # q2 = np.array(traj["traj2"]["q_w_c"])
+
+    # p1 = np.array(traj["traj1"]["p_w_c"])
+    # q1 = np.array(traj["traj1"]["q_w_c"])
+
+    # p2 = np.array(traj["traj2"]["p_w_c"])
+    # q2 = np.array(traj["traj2"]["q_w_c"])
 
 
 
@@ -115,14 +123,14 @@ def main(ctx):
 
     cam= scn_mgr.createCamera("camera1")
     cam.setNearClipDistance(0.01)
-    cam.setFarClipDistance(1.5)
+    cam.setFarClipDistance(5.0)
     win = ctx.getRenderWindow().addViewport(cam)
 
-    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,-1.25]), [1,0,0])
+    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,-1]), [1,0,0])
     line1_node.setVisible(True)
 
-    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,-1.25]), [0,1,0])
-    line2_node.setVisible(True)
+    #line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,-1.25]), [0,1,0])
+    #line2_node.setVisible(True)
 
     camnode = scn_mgr.getRootSceneNode().createChildSceneNode()
 
@@ -171,6 +179,8 @@ def main(ctx):
         camnode.setPosition(tvec)
 
         ctx.getRoot().renderOneFrame()
+
+        time.sleep(0.1)
 ctx = Ogre.Bites.ApplicationContext()
 ctx.initApp()
 main(ctx)

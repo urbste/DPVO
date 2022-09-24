@@ -3,45 +3,54 @@ import numpy as np
 from dpvo.lietorch import SE3
 import torch
 
-base_path = "/media/Data/Sparsenet/TestAlignment"
+base_path = "/media/Data/Sparsenet/Ammerbach/Links"
 
 
-def load_dataset(path):
+# def load_dataset(path):
 
-    data = np.load(path)
-    poses_w_c = data["kf_poses"]
-    num_kfs = poses_w_c.shape[0]
-    frametimes_slam_ns = data["image_tstamps"].astype(np.int64)[:num_kfs]
-    frame_ids = data["tstamps"][:num_kfs]
-    patches = data["patches"][:num_kfs,...]
-    ii, jj, kk = data["ii"], data["jj"], data["kk"]
-    intr = data["intrinsics"]
+#     data = np.load(path)
+#     poses_w_c = data["kf_poses"]
+#     num_kfs = poses_w_c.shape[0]
+#     frametimes_slam_ns = data["image_tstamps"].astype(np.int64)[:num_kfs]
+#     frame_ids = data["tstamps"][:num_kfs]
+#     patches = data["patches"][:num_kfs,...]
+#     ii, jj, kk = data["ii"], data["jj"], data["kk"]
+#     intr = data["intrinsics"]
 
-    se3_poses = SE3(torch.tensor(poses_w_c).unsqueeze(0))
-    p_w_c = se3_poses.translation()[:,0:3]
-    q_w_c = se3_poses.data[:,3:]
+#     se3_poses = SE3(torch.tensor(poses_w_c).unsqueeze(0))
+#     p_w_c = se3_poses.translation()[:,0:3]
+#     q_w_c = se3_poses.data[:,3:]
 
-    return p_w_c.numpy(), q_w_c.numpy(), poses_w_c, patches, ii, jj, kk, frametimes_slam_ns, intr
+#     return p_w_c.numpy(), q_w_c.numpy(), poses_w_c, patches, ii, jj, kk, frametimes_slam_ns, intr
 
 
-p, q, se3_poses, patches, ii, jj, kk, t_ns, intr = \
-    load_dataset(os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"))
+# p, q, se3_poses, patches, ii, jj, kk, t_ns, intr = \
+#     load_dataset(os.path.join(base_path,"dpvo_result_run1.npz"))
+
+from utils import load_dataset
+
+dataset = load_dataset(os.path.join(base_path,"dpvo_result_run1.npz"),
+    os.path.join(base_path,"run1.json"), None, 0.05, False, True, False)
 
 import cv2
 
 start_id = 40
 
-win_size = 5
+win_size = 2
 # read some frames to test stuff
+t_ns = dataset["frametimes_ns"]
 ti = t_ns[start_id]
 tj = t_ns[start_id+1]
 
+patches = np.array(dataset["patches"])
 pi = patches[start_id]
 num_patches_per_img = patches.shape[1]
 total_num_patches = patches.shape[0]*patches.shape[1]
 flattened_patches = torch.tensor(patches).view(1, total_num_patches, 3, 3, 3)
+poses = np.concatenate(
+        [np.array(dataset["p_w_c"]), np.array(dataset["q_w_c"])],1)
 
-Ii = cv2.imread(os.path.join(base_path,"bike1_trail1_linear_imgs",str(t_ns[start_id])+".png"))
+Ii = cv2.imread(os.path.join(base_path,"run1",str(t_ns[start_id])+".png"))
 
 # plot 64 points
 def plot_points(img, img_pts):
@@ -68,16 +77,17 @@ cv2.waitKey(0)
 
 # now project to next frames
 for idx, t in enumerate(t_ns[start_id-win_size:start_id+win_size]):
-    Ij = cv2.imread(os.path.join(base_path,"bike1_trail1_linear_imgs",str(t)+".png"))
+    Ij = cv2.imread(os.path.join(base_path,"run1",str(t)+".png"))
 
     i = torch.zeros((num_patches_per_img)) + start_id
     j = i + (idx - win_size)
     k = torch.arange(0,num_patches_per_img) + i * num_patches_per_img
+
     coords = reproject(
             i.long(), j.long(), k.long(), 
             flattened_patches, 
-            torch.tensor(intr).unsqueeze(0), 
-            SE3(torch.tensor(np.expand_dims(se3_poses,0))).inv())
+            torch.tensor(dataset["intrinsics"]).unsqueeze(0), 
+            SE3(torch.tensor(np.expand_dims(poses,0))).inv())
     
     I_j_w_pts = plot_points(Ij, coords.squeeze(0))
 

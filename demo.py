@@ -60,7 +60,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--network', type=str, default='dpvo.pth')
     parser.add_argument('--imagedir', type=str, default="/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear.MP4")
-    parser.add_argument('--calib', type=str, default="calib/gopro9_linear.txt")
+    parser.add_argument('--calib', type=str, default="calib/gopro9_1440_linear.txt")
     parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--skip', type=int, default=0)
     parser.add_argument('--config', default="config/medium.yaml")

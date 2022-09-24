@@ -30,18 +30,21 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     tel_importer.read_gopro_telemetry(telemetry_file)
     gps_xyz, _ = tel_importer.get_gps_pos_at_frametimes(frametimes_slam_ns)
     gravity_vectors = tel_importer.get_gravity_vector_at_times(frametimes_slam_ns)
+    if llh0 == None:
+        llh0 = tel_importer.telemetry["gps_llh"][0]
+    gps_enu_at_kfs = np.asarray([ECEFtoENU(gps_xyz[int(key)], llh0) if int(key) in gps_xyz else print(key) for key in frametimes_slam_ns])
 
     p_w_c = SE3(torch.tensor(poses_w_c)).translation()[:,0:3].numpy()
     q_w_c = SE3(torch.tensor(poses_w_c)).data[:,3:].numpy()
 
-    gps_enu_at_kfs = np.asarray([ECEFtoENU(gps_xyz[int(key)], llh0) if int(key) in gps_xyz else print(key) for key in frametimes_slam_ns])
 
     s = 1
     if scale_with_gps:
         s = get_vis_scaler(p_w_c, gps_enu_at_kfs)
         p_w_c = s * p_w_c
         valid_points = s * valid_points
-    
+        patches[:,:,2] *= s
+        
     # gravity normalization and scale
     R_to_grav = np.eye(3)
     if align_with_grav:
@@ -59,8 +62,10 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
         valid_points = (R_heading @ valid_points.T).T
 
     dataset = {
+        "patches": patches.tolist(),
         "points": valid_points.tolist(),
         "colors": valid_point_colors.tolist(),
+        "intrinsics": data["intrinsics"].tolist(),
         "p_w_c": p_w_c.tolist(),
         "q_w_c": q_w_c.tolist(),
         "R_to_grav": R_to_grav.tolist(),
