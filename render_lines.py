@@ -5,9 +5,9 @@ import cv2
 import os
 import pickle
 from scipy.spatial.transform import Rotation as R
-
+import pyvisfm as pvi
 import math
-
+import natsort
 import numpy as np
 import cv2
 
@@ -18,6 +18,15 @@ import Ogre.RTShader
 from utils import load_dataset
 
 import time
+
+def get_cam_pose_from_spline_at_time(spline, time_ns):
+    pose_vec = spline.GetCameraPose(int(time_ns))
+    R_w_c = R.from_quat([pose_vec[0],pose_vec[1],pose_vec[2],pose_vec[3]]).as_matrix()
+    p_w_c = np.expand_dims(pose_vec[4:],1)
+    R_c_w = R_w_c.T
+    t_c_w = -R_c_w@p_w_c
+
+    return R_c_w, t_c_w, p_w_c
 
 def set_camera_intrinsics(cam, K, imsize):
     cam.setAspectRatio(imsize[0]/imsize[1])
@@ -43,7 +52,7 @@ def create_traj_line(name, mat_name, scn_mgr, pos, color):
     line_mat.getTechnique(0).getPass(0).setAmbient(0.5,0.5,0.5)
     line_mat.getTechnique(0).getPass(0).setSelfIllumination(color[0],color[1],color[2])
     line_mat.getTechnique(0).getPass(0).setPointSize(5.)
-    line_mat.getTechnique(0).getPass(0).setLineWidth(5.)
+    line_mat.getTechnique(0).getPass(0).setLineWidth(10.)
 
     line_obj.begin(mat_name, Ogre.RenderOperation.OT_LINE_LIST)
     for i in range(pos.shape[0]):
@@ -86,27 +95,22 @@ def main(ctx):
     #traj = pickle.load(a_file)
     #a_file.close()
 
-    dataset1 = load_dataset(
-        os.path.join(base_path,"dpvo_result_run1.npz"),
-        os.path.join(base_path,"run1.json"),
-        np.array([50.9398978, 11.621137, 298.571]), inv_depth_thresh=0.5, 
-        scale_with_gps=True, align_with_grav=True, correct_heading=False)
-
-
-    timestamps1 = dataset1["frametimes_ns"] #traj["traj1"]["t_ns"]
-    p1 = np.array(dataset1["p_w_c"])
-    q1 = np.array(dataset1["q_w_c"])
-
-    # p2 = np.array(traj["traj2"]["p_w_c"])
-    # q2 = np.array(traj["traj2"]["q_w_c"])
-
-    # p1 = np.array(traj["traj1"]["p_w_c"])
-    # q1 = np.array(traj["traj1"]["q_w_c"])
-
-    # p2 = np.array(traj["traj2"]["p_w_c"])
-    # q2 = np.array(traj["traj2"]["q_w_c"])
-
-
+    
+    spline = pvi.SplineTrajectoryEstimator()
+    pvi.ReadSpline(spline, 
+        os.path.join(base_path,"spline_recon_run1.spline"))
+    # generate image poses
+    image_folder = os.listdir(os.path.join(base_path,"run1"))
+    timestamps1 = natsort.natsorted(
+        [os.path.splitext(os.path.basename(p))[0] for p in image_folder])
+    p1 = []
+    q1 = []
+    for t_ns in timestamps1:
+        R_w_c, _, p_w_c = get_cam_pose_from_spline_at_time(spline, t_ns)
+        p1.append(p_w_c.squeeze())
+        q1.append(R.from_matrix(R_w_c.T).as_quat())
+    q1 = np.array(q1)
+    p1 = np.array(p1)
 
     cfg = Ogre.ConfigFile()
     cfg.loadDirect("ogre_resources.cfg")
@@ -123,7 +127,7 @@ def main(ctx):
 
     cam= scn_mgr.createCamera("camera1")
     cam.setNearClipDistance(0.01)
-    cam.setFarClipDistance(5.0)
+    cam.setFarClipDistance(4.0)
     win = ctx.getRenderWindow().addViewport(cam)
 
     line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,-1]), [1,0,0])
@@ -172,7 +176,7 @@ def main(ctx):
         #ax = Ogre.Vector3(*rvec)
         #ang = ax.normalise()
         #marker_node.setOrientation(Ogre.Quaternion(ang, ax))
-        #marker_node.setPosition(p1[i,:]-np.array([0,1,-0.5]))
+        marker_node.setPosition(p1[1000,:]+np.array([0,2,-1.0]))
         mesh_node.setVisible(True)
 
         camnode.setOrientation(Ogre.Quaternion(*rvec))
@@ -180,7 +184,7 @@ def main(ctx):
 
         ctx.getRoot().renderOneFrame()
 
-        time.sleep(0.1)
+        # time.sleep(0.1)
 ctx = Ogre.Bites.ApplicationContext()
 ctx.initApp()
 main(ctx)
