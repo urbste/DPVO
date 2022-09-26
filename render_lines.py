@@ -54,7 +54,7 @@ def create_traj_line(name, mat_name, scn_mgr, pos, color):
     line_mat.getTechnique(0).getPass(0).setPointSize(5.)
     line_mat.getTechnique(0).getPass(0).setLineWidth(10.)
 
-    line_obj.begin(mat_name, Ogre.RenderOperation.OT_LINE_LIST)
+    line_obj.begin(mat_name, Ogre.RenderOperation.OT_POINT_LIST)
     for i in range(pos.shape[0]):
        line_obj.position(pos[i,:])
     line_obj.end()
@@ -130,7 +130,7 @@ def main(ctx):
     cam.setFarClipDistance(4.0)
     win = ctx.getRenderWindow().addViewport(cam)
 
-    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,-1]), [1,0,0])
+    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,0.5]), [1,0,0])
     line1_node.setVisible(True)
 
     #line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,-1.25]), [0,1,0])

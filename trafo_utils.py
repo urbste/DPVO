@@ -23,10 +23,10 @@ def rot_between_vectors(a,b):
 
     return R
 
-def get_rot_to_worldframe(gravity_vecors, q_w_c, world_vec=np.array([0,0,-1])):
+def get_rot_to_worldframe(gravity_vecs, q_w_c, world_vec=np.array([0,0,-1])):
     mean_vec = []
-    for i in range(gravity_vecors.shape[0]):
-        R_cam_to_world = rot_between_vectors(gravity_vecors[i], world_vec)
+    for i in range(gravity_vecs.shape[0]):
+        R_cam_to_world = rot_between_vectors(gravity_vecs[i], world_vec)
         Rij = R_cam_to_world @ R.from_quat(q_w_c[i,:]).as_matrix().T
         mean_vec.append(R.from_matrix(Rij).as_rotvec())
 

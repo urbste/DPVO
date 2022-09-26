@@ -1,7 +1,7 @@
 import numpy as np
 from telemetry_converter import TelemetryImporter
 from natsort import natsorted
-from gps_converter import ECEFtoENU
+from gps_converter import ECEFtoNED
 from dpvo.lietorch import SE3
 import torch
 
@@ -9,7 +9,10 @@ from scipy.spatial.transform import Rotation as R
 from trafo_utils import get_vis_scaler, get_rot_to_worldframe
 from trafo_utils import get_heading_angle_diff
 import json
+from pymap3d import ecef2ned
 
+def ecef2ned_v(ecef, ll0):
+    return ecef2ned(ecef[0],ecef[1],ecef[2], ll0[0], ll0[1], ll0[2])
 
 def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2, 
     scale_with_gps=False, align_with_grav=True, correct_heading=False):
@@ -33,15 +36,17 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     gravity_vectors = tel_importer.get_gravity_vector_at_times(frametimes_slam_ns)
     if llh0 == None:
         llh0 = tel_importer.telemetry["gps_llh"][0]
-    gps_enu_at_kfs = np.asarray([ECEFtoENU(gps_xyz[int(key)], llh0) if int(key) in gps_xyz else print(key) for key in frametimes_slam_ns])
+    
+    gps_ned_at_kfs = np.asarray([
+        ecef2ned_v(gps_xyz[int(key)], llh0) \
+            if int(key) in gps_xyz else print(key) for key in frametimes_slam_ns])
 
     p_w_c = SE3(torch.tensor(poses_w_c)).translation()[:,0:3].numpy()
     q_w_c = SE3(torch.tensor(poses_w_c)).data[:,3:].numpy()
 
-
     s = 1
     if scale_with_gps:
-        s = get_vis_scaler(p_w_c, gps_enu_at_kfs)
+        s = get_vis_scaler(p_w_c, gps_ned_at_kfs)
         p_w_c = s * p_w_c
         valid_points = s * valid_points
         patches[:,:,2] /= s
@@ -49,12 +54,12 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     # gravity normalization and scale
     R_to_grav = np.eye(3)
     if align_with_grav:
-        R_to_grav = get_rot_to_worldframe(gravity_vectors, q_w_c)
+        R_to_grav = get_rot_to_worldframe(gravity_vectors, q_w_c, world_vec=np.array([0,0,1.]))
         p_w_c = (R_to_grav @ p_w_c.T).T
         q_w_c = R.from_matrix(R.from_quat(q_w_c).inv().as_matrix() @ R_to_grav.T).inv().as_quat()
         valid_points = (R_to_grav @ valid_points.T).T
 
-    gps_normalized = gps_enu_at_kfs-gps_enu_at_kfs[0]
+    gps_normalized = gps_ned_at_kfs-gps_ned_at_kfs[0]
     R_heading = np.eye(3)
     if correct_heading:
         R_heading = R.from_rotvec([0,0,-get_heading_angle_diff(p_w_c, gps_normalized)]).as_matrix()
@@ -73,7 +78,7 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
         "R_heading": R_heading.tolist(),
         "map_scale": s,
         "gravity_vectors": gravity_vectors.tolist(),
-        "gps_enu": gps_enu_at_kfs.tolist(),
+        "gps_local_ned": gps_ned_at_kfs.tolist(),
         "frametimes_ns": frametimes_slam_ns.tolist(),
         "frame_ids": frame_ids,
         "ix": ix, "ii": ii, "kk": kk, "jj": jj,

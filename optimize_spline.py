@@ -115,7 +115,8 @@ def create_pt_recon_from_vo(vo_data, win_size):
                 if pt2[0] < 0.0 or pt2[1] > pt_camera_intr.ImageWidth() or \
                    pt2[1] < 0.0 or pt2[1] > pt_camera_intr.ImageHeight():
                    continue
-                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*2))
+                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*1))
+    
     # do the same for the start and end frames
     for v_id in range(0, win_size-1):
         v_ids_neighbor = list(range(v_id, v_id+win_size))
@@ -184,21 +185,23 @@ def create_pt_recon_from_vo(vo_data, win_size):
     return recon, pt_camera_intr
 
 base_path = "/media/Data/Sparsenet/Ammerbach/Links"
+run = "run1"
+tel_json = run+".json"
+dpvo_res = "dpvo_result_"+run+".npz"
 
 # load telemetry
 telemetry = TelemetryImporter()
-telemetry.read_gopro_telemetry(os.path.join(base_path,"run1.json"))
-llh0 = telemetry.telemetry["gps_llh"][0]
+telemetry.read_gopro_telemetry(os.path.join(base_path,tel_json))
 
 # load VO dataset
 dataset = load_dataset(
-    os.path.join(base_path,"dpvo_result_run1.npz"),
-    os.path.join(base_path,"run1.json"),
-    llh0, inv_depth_thresh=0.5, 
-    scale_with_gps=True, align_with_grav=True, correct_heading=False)
+    os.path.join(base_path,dpvo_res),
+    os.path.join(base_path,tel_json),
+    None, inv_depth_thresh=0.5, 
+    scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
-q_r3 = 0.97
-q_so3 = 0.97
+q_r3 = 0.99
+q_so3 = 0.99
 acc_white_noise_var = 0.0196602**2
 gyr_white_noise_var = 0.00154431**2
 gyro_np = np.array(dataset["gyro"])
@@ -207,10 +210,10 @@ imu_times_ns = np.array(dataset["imu_times"])
 
 from sew import knot_spacing_and_variance
 r3_dt, r3_var,_,_ = knot_spacing_and_variance(
-    accl_np.T, imu_times_ns*1e-9, q_r3, min_dt=0.05, 
+    accl_np.T, imu_times_ns*1e-9, q_r3, min_dt=0.02, 
     max_dt=.5, verbose=False, measurement_variance=acc_white_noise_var)
 so3_dt, so3_var,_,_ = knot_spacing_and_variance(
-    gyro_np.T, imu_times_ns*1e-9, q_so3, min_dt=0.05, 
+    gyro_np.T, imu_times_ns*1e-9, q_so3, min_dt=0.02, 
     max_dt=.5, verbose=False, measurement_variance=gyr_white_noise_var)
 
 #gyr_weight_vec = [1/np.sqrt(g_wx+gyr_var_n),1/np.sqrt(g_wy+gyr_var_n),1/np.sqrt(g_wz+gyr_var_n)]
@@ -229,17 +232,17 @@ R_i_c, t_i_c, T_i_c = load_camera_imu_calibration("calib/cam_imu_calib_result_GX
 # initialize a spline
 spline_estimator = pvi.SplineTrajectoryEstimator()
 spline_estimator.SetT_i_c(R_i_c, np.expand_dims(t_i_c,1)) #np.expand_dims(t_i_c,1))# np.expand_dims(t_i_c,1)) # np.zeros((3,1), dtype=np.float32))# np.expand_dims(t_i_c,1))
-spline_estimator.SetGravity(np.array([0,0,9.811]))
+spline_estimator.SetGravity(np.array([0,0,-9.811]))
 line_delay_init = 1./camera.ImageHeight()*1./telemetry.telemetry["camera_fps"]
 spline_estimator.SetCameraLineDelay(line_delay_init)
 spline_estimator.InitSO3R3WithVision(recon, int(so3_dt*1e9), int(r3_dt*1e9))
 spline_estimator.InitBiasSplines(
-    np.array([0.,0.,0.]), np.array([0.,0.,0.]), int(10*1e9), int(10*1e9), 1.0, 1e-2)
+    np.array([0.,0.,0.]), np.array([0.,0.,0.]), int(2*1e9), int(2*1e9), 2.0, 1e-2)
 
 print("Initial camera line delay: ", spline_estimator.GetRSLineDelay()*1e6,"us")
 start_time_ns = dataset["frametimes_ns"][0]
 end_time_ns = dataset["frametimes_ns"][-1]
-accl_meas = {}
+accl_meas, gyro_meas = {}, {}
 for i in range(len(telemetry.telemetry["gyroscope"])):
     imu_t_ns = int(imu_times_ns[i])-int(imu_times_ns[0])
     if imu_t_ns < start_time_ns or imu_t_ns > end_time_ns:
@@ -247,37 +250,163 @@ for i in range(len(telemetry.telemetry["gyroscope"])):
     spline_estimator.AddGyroscopeMeasurement(gyro_np[i,:], imu_t_ns, gyr_weight_vec)    
     spline_estimator.AddAccelerometerMeasurement(accl_np[i,:], imu_t_ns, accl_weight_vec)  
     accl_meas[imu_t_ns] = accl_np[i,:].tolist()
+    gyro_meas[imu_t_ns] = gyro_np[i,:].tolist()
+
+accl_tns = sorted(list(accl_meas.keys()))
+
 for vid in recon.ViewIds:
-    spline_estimator.AddRSCameraMeasurement(recon.View(vid), recon, 4.0)
+   spline_estimator.AddGSCameraMeasurement(recon.View(vid), recon, 3.0)
     
+# add some GPS measurements
+gps_ned_t = np.array(dataset["gps_local_ned"])
+gps_weight = np.array([1/5., 1/5., 1/10.])
+for idx, t_ns in enumerate(dataset["frametimes_ns"]):
+    spline_estimator.AddGPSMeasurement(gps_ned_t[idx,:]-gps_ned_t[0,:], t_ns, gps_weight)
+
 
 # optimize spline
-flags = pvi.SplineOptimFlags.SO3 | pvi.SplineOptimFlags.R3 | pvi.SplineOptimFlags.POINTS |  pvi.SplineOptimFlags.IMU_BIASES 
+flags = pvi.SplineOptimFlags.SO3 | pvi.SplineOptimFlags.R3 | pvi.SplineOptimFlags.POINTS |  pvi.SplineOptimFlags.IMU_BIASES
 print("Init line delay: ",spline_estimator.GetRSLineDelay())
-spline_estimator.OptimizeFromTo(10, flags, recon, 0, 0)
+spline_estimator.OptimizeFromTo(20, flags, recon, 0, 0)
 
-# accl_tns = sorted(list(accl_meas.keys()))
-# pose = spline_estimator.GetPose(accl_tns[10])
-# R_w_i = R.from_quat(pose[0:4]).as_matrix()
-# accl_world = spline_estimator.GetAccelerationWorld(accl_tns[10])
-# test = R_w_i.T @ np.array([0,0,9.81]) + 
-
-optim_gyro_bias = spline_estimator.GetGyroBias(int(5*1e9))
-optim_accl_bias = spline_estimator.GetAcclBias(int(5*1e9))
-print("Optimized gyro bias: ", optim_gyro_bias)
+optim_gyro_bias = spline_estimator.GetGyroBias(int(20*1e9))
+optim_accl_bias = spline_estimator.GetAcclBias(int(20*1e9))
+print("Optimized gyro bias: ", optim_gyro_bias) 
 print("Optimized acclbias: ", optim_accl_bias)
-
-# camera_poses = {}
-# camera_c_w = {}
-# for v_id in recon.ViewIds:
-#     view = recon.View(v_id)
-#     t_ns = view.GetTimestamp()*1e9 
-#     camera_c_w[t_ns] = recon.View(v_id).Camera().GetOrientationAsAngleAxis()
-#     camera_poses[t_ns] = recon.View(v_id).Camera().GetPosition()
-
 
 pt.io.WritePlyFile(os.path.join(base_path,"recon_output.ply"), recon, (255, 0, 0), 2)
 spline_estimator.UpdateCameraPoses(recon, False)
-pvi.WriteSpline(spline_estimator, os.path.join(base_path,"spline_recon_run1.spline"))
-pt.io.WriteReconstruction(recon, os.path.join(base_path,"spline_recon_run1.recon"))
-pt.io.WritePlyFile(os.path.join(base_path,"spline_output_run1.ply"), recon, (255, 0, 0), 2)
+pvi.WriteSpline(spline_estimator, os.path.join(base_path,"spline_recon_"+run+".spline"))
+pt.io.WriteReconstruction(recon, os.path.join(base_path,"spline_recon_"+run+".recon"))
+pt.io.WritePlyFile(os.path.join(base_path,"spline_output_"+run+".ply"), recon, (255, 0, 0), 2)
+
+
+import matplotlib.pyplot as plt
+
+accl_spline = []
+accl_imu = []
+accl_bias = []
+gyro_spline = []
+gyro_imu = []
+gyro_bias = []
+
+pos_spline = []
+pos_sfm = []
+q_spline = []
+q_sfm = []
+t = []
+
+for v_id in sorted(recon.ViewIds):
+
+    T_w_c = spline_estimator.GetCameraPose(int(recon.View(v_id).GetTimestamp()*1e9))
+    pos_spline.append(T_w_c[4:])
+    pos_sfm.append(recon.View(v_id).Camera().GetPosition())
+    cam_q = T_w_c[0:4]
+    q_spline.append(cam_q)
+    q_sfm.append(R.from_matrix(recon.View(v_id).Camera().GetOrientationAsRotationMatrix().T).as_quat())
+
+for idx, t_ns in enumerate(sorted(accl_tns)):
+
+
+    accl_b = spline_estimator.GetAccelerationBody(t_ns)
+    vel_b = spline_estimator.GetAngularVelocity(t_ns)
+
+    ba = spline_estimator.GetAcclBias(t_ns)
+    gb = spline_estimator.GetGyroBias(t_ns)
+
+    accl_spline.append(accl_b)
+    accl_imu.append(accl_meas[t_ns])
+    accl_bias.append(ba)
+
+    gyro_spline.append(vel_b)
+    gyro_imu.append(gyro_meas[t_ns])
+    gyro_bias.append(gb)
+
+accl_spline_np = np.asarray(accl_spline)
+accl_imu_np = np.asarray(accl_imu)
+accl_bias_np = np.asarray(accl_bias)
+gyro_spline_np = np.asarray(gyro_spline)
+gyro_imu_np = np.asarray(gyro_imu)
+gyro_bias_np = np.asarray(gyro_bias)
+t_np = np.asarray(t)
+skip = 4
+
+labels = ['spline x', 'imu y', 
+        'spline y', 'imu y', 
+        'spline z', 'imu z'] 
+
+fig, ax = plt.subplots(2,1)
+ax[0].set_title("Accelerometer - Spline value vs Measurements")
+ax[0].plot(accl_spline_np[0:-1:skip,0], 'r')
+ax[0].plot(accl_imu_np[0:-1:skip,0], 'r--')
+ax[0].plot(accl_spline_np[0:-1:skip,1], 'g')
+ax[0].plot(accl_imu_np[0:-1:skip,1], 'g--')
+ax[0].plot(accl_spline_np[0:-1:skip,2], 'b')
+ax[0].plot(accl_imu_np[0:-1:skip,2], 'b--')
+ax[0].set_xlabel("measurement")
+ax[0].set_ylabel("m/s2")
+
+ax[1].set_title("Gyroscope - Spline value vs Measurements")
+ax[1].plot(gyro_spline_np[0:-1:skip,0], 'r', label="spline rot vel x")
+ax[1].plot(gyro_imu_np[0:-1:skip,0], 'r--', label="gyro rot vel x")
+ax[1].plot(gyro_spline_np[0:-1:skip,1], 'g', label="spline rot vel y")
+ax[1].plot(gyro_imu_np[0:-1:skip,1], 'g--', label="gyro rot vel y")
+ax[1].plot(gyro_spline_np[0:-1:skip,2], 'b', label="spline rot vel z")
+ax[1].plot(gyro_imu_np[0:-1:skip,2], 'b--', label="gyro rot vel z")
+ax[1].set_xlabel("measurement")
+ax[1].set_ylabel("rad/s")
+fig.legend(ax, labels=labels, loc="upper right", borderaxespad=0.1) 
+plt.show()
+
+fig, ax = plt.subplots(2,1)
+ax[0].set_title("Accelerometer bias")
+ax[0].plot(accl_bias_np[0:-1:skip,0], 'r')
+ax[0].plot(accl_bias_np[0:-1:skip,1], 'g')
+ax[0].plot(accl_bias_np[0:-1:skip,2], 'b')
+ax[0].set_xlabel("time")
+ax[0].set_ylabel("m/s2")
+
+ax[1].set_title("Gyroscope bias")
+ax[1].plot(gyro_bias_np[0:-1:skip,0], 'r', label="bias x")
+ax[1].plot(gyro_bias_np[0:-1:skip,1], 'g', label="bias y")
+ax[1].plot(gyro_bias_np[0:-1:skip,2], 'b', label="bias z")
+ax[1].set_xlabel("time")
+ax[1].set_ylabel("rad/s")
+plt.show()
+
+pos_sfm_np = np.array(pos_sfm)
+pos_spline_np = np.array(pos_spline)
+
+q_sfm_np = np.array(q_sfm)
+q_spline_np = np.array(q_spline)
+
+skip = 1
+fig, ax = plt.subplots(2,1)
+ax[0].set_title("Camera position")
+ax[0].plot(pos_spline_np[0:-1:skip,0], 'r')
+ax[0].plot(pos_spline_np[0:-1:skip,1], 'g')
+ax[0].plot(pos_spline_np[0:-1:skip,2], 'b')
+ax[0].plot(pos_sfm_np[0:-1:skip,0], 'r--')
+ax[0].plot(pos_sfm_np[0:-1:skip,1], 'g--')
+ax[0].plot(pos_sfm_np[0:-1:skip,2], 'b--')
+ax[0].set_xlabel("time")
+ax[0].set_ylabel("m/s2")
+
+ax[1].set_title("Camera orientation")
+ax[1].plot(q_spline_np[0:-1:skip,0], 'r')
+ax[1].plot(q_spline_np[0:-1:skip,1], 'g')
+ax[1].plot(q_spline_np[0:-1:skip,2], 'b')
+ax[1].plot(q_spline_np[0:-1:skip,3], 'c')
+ax[1].plot(q_sfm_np[0:-1:skip,0], 'r--')
+ax[1].plot(q_sfm_np[0:-1:skip,1], 'g--')
+ax[1].plot(q_sfm_np[0:-1:skip,2], 'b--')
+ax[1].plot(q_sfm_np[0:-1:skip,3], 'c--')
+
+ax[1].set_xlabel("time")
+ax[1].set_ylabel("m/s2")
+plt.show()
+
+
+# do some visualization
+
+

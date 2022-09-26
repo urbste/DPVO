@@ -19,7 +19,7 @@ llh02 = tel_importer.telemetry["gps_llh"][0]
 dataset1 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
     os.path.join(base_path,"bike1_trail1_linear.json"),
-    llh01, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=False)
+    llh01, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
 dataset2 = load_dataset(
     os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
@@ -56,9 +56,10 @@ map_pts_pcl1.colors = o3d.utility.Vector3dVector(dataset1["colors"])
 #     map_pts_pcl1, o3d.utility.DoubleVector(radii))
 # mesh1.compute_vertex_normals()
 
-# gps_pcl1 = o3d.geometry.PointCloud()
-# gps_pcl1.points = o3d.utility.Vector3dVector(gps1-gps1[0])
-# gps_pcl1.paint_uniform_color([1, 0.706, 0])
+gps_pcl1 = o3d.geometry.PointCloud()
+gps_np = np.array(dataset1["gps_enu"])
+gps_pcl1.points = o3d.utility.Vector3dVector(gps_np-gps_np[0,:])
+gps_pcl1.paint_uniform_color([1, 0.5, 0.5])
 # gps_pcl2 = o3d.geometry.PointCloud()
 # gps_pcl2.points = o3d.utility.Vector3dVector(gps2-gps2[0])
 # gps_pcl2.paint_uniform_color([1, 0,  0.706])
@@ -84,7 +85,7 @@ for i in range(p_w_cs.shape[0]):
 
 #visualizer.add_geometry(mesh1)
 #visualizer.add_geometry(map_pts_pcl2)
-#visualizer.add_geometry(gps_pcl1)
+visualizer.add_geometry(gps_pcl1)
 #visualizer.add_geometry(gps_pcl2)
 visualizer.add_geometry(world_frame)
 

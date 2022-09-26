@@ -51,6 +51,9 @@ def ECEFtoENU(ecef, lla0):
 
   return enu_x, enu_y, enu_z
 
+def ECEFtoNED(ecef, ll0):
+  e, n, u = ECEFtoENU(ecef, ll0)
+  return n, e, -u
 
 # def ECEFToLLA(ecef):
 #   x = ecef[0]
