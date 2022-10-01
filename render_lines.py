@@ -98,9 +98,9 @@ def main(ctx):
     
     spline = pvi.SplineTrajectoryEstimator()
     pvi.ReadSpline(spline, 
-        os.path.join(base_path,"spline_recon_run1.spline"))
+        os.path.join(base_path,"spline_recon_run2.spline"))
     # generate image poses
-    image_folder = os.listdir(os.path.join(base_path,"run1"))
+    image_folder = os.listdir(os.path.join(base_path,"run2"))
     timestamps1 = natsort.natsorted(
         [os.path.splitext(os.path.basename(p))[0] for p in image_folder])
     p1 = []

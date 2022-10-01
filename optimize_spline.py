@@ -86,7 +86,7 @@ def create_pt_recon_from_vo(vo_data, win_size):
             view_ids_to_pt_ids[view_id].append(t_id)
 
     # now add views and observations
-    t_ns = vo_data["frametimes_ns"]
+    t_ns = vo_data["frametimes_slam_ns"] # starts at 0 with video time
     for i, t_ in enumerate(t_ns):
         v_id = recon.AddView(str(t_), 0, t_*1e-9)
         v = recon.MutableView(v_id)
@@ -200,20 +200,20 @@ dataset = load_dataset(
     None, inv_depth_thresh=0.5, 
     scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
-q_r3 = 0.99
-q_so3 = 0.99
+q_r3 = 0.995
+q_so3 = 0.995
 acc_white_noise_var = 0.0196602**2
 gyr_white_noise_var = 0.00154431**2
 gyro_np = np.array(dataset["gyro"])
 accl_np = np.array(dataset["accl"])
-imu_times_ns = np.array(dataset["imu_times"])
+imu_times_ns = np.array(dataset["imu_times_ns"])
 
 from sew import knot_spacing_and_variance
 r3_dt, r3_var,_,_ = knot_spacing_and_variance(
-    accl_np.T, imu_times_ns*1e-9, q_r3, min_dt=0.02, 
+    accl_np.T, imu_times_ns*1e-9, q_r3, min_dt=0.04, 
     max_dt=.5, verbose=False, measurement_variance=acc_white_noise_var)
 so3_dt, so3_var,_,_ = knot_spacing_and_variance(
-    gyro_np.T, imu_times_ns*1e-9, q_so3, min_dt=0.02, 
+    gyro_np.T, imu_times_ns*1e-9, q_so3, min_dt=0.04, 
     max_dt=.5, verbose=False, measurement_variance=gyr_white_noise_var)
 
 #gyr_weight_vec = [1/np.sqrt(g_wx+gyr_var_n),1/np.sqrt(g_wy+gyr_var_n),1/np.sqrt(g_wz+gyr_var_n)]
@@ -226,7 +226,7 @@ print("Accelerometer weighting factor: {:.3f}/{:.3f}/{:.3f}. Knot spacing R3: {:
     accl_weight_vec[0],accl_weight_vec[1],accl_weight_vec[2],r3_dt))
 
 print("Creating a pyTheiaSfM reconstruction.")
-recon, camera = create_pt_recon_from_vo(dataset, 3)
+recon, camera = create_pt_recon_from_vo(dataset, 2)
 print("Finished creating a pyTheiaSfM reconstruction.")
 R_i_c, t_i_c, T_i_c = load_camera_imu_calibration("calib/cam_imu_calib_result_GX018770.json")
 # initialize a spline
@@ -237,14 +237,14 @@ line_delay_init = 1./camera.ImageHeight()*1./telemetry.telemetry["camera_fps"]
 spline_estimator.SetCameraLineDelay(line_delay_init)
 spline_estimator.InitSO3R3WithVision(recon, int(so3_dt*1e9), int(r3_dt*1e9))
 spline_estimator.InitBiasSplines(
-    np.array([0.,0.,0.]), np.array([0.,0.,0.]), int(2*1e9), int(2*1e9), 2.0, 1e-2)
+    np.array([0.,0.,0.]), np.array([0.,0.,0.]), int(5*1e9), int(5*1e9), 2.0, 1e-2)
 
 print("Initial camera line delay: ", spline_estimator.GetRSLineDelay()*1e6,"us")
-start_time_ns = dataset["frametimes_ns"][0]
-end_time_ns = dataset["frametimes_ns"][-1]
+start_time_ns = dataset["frametimes_slam_ns"][0]
+end_time_ns = dataset["frametimes_slam_ns"][-1]
 accl_meas, gyro_meas = {}, {}
 for i in range(len(telemetry.telemetry["gyroscope"])):
-    imu_t_ns = int(imu_times_ns[i])-int(imu_times_ns[0])
+    imu_t_ns = int(imu_times_ns[i])
     if imu_t_ns < start_time_ns or imu_t_ns > end_time_ns:
         continue
     spline_estimator.AddGyroscopeMeasurement(gyro_np[i,:], imu_t_ns, gyr_weight_vec)    
@@ -255,13 +255,13 @@ for i in range(len(telemetry.telemetry["gyroscope"])):
 accl_tns = sorted(list(accl_meas.keys()))
 
 for vid in recon.ViewIds:
-   spline_estimator.AddGSCameraMeasurement(recon.View(vid), recon, 3.0)
-    
+   spline_estimator.AddRSInvCameraMeasurement(recon.View(vid), recon, 5.0)
+
 # add some GPS measurements
-gps_ned_t = np.array(dataset["gps_local_ned"])
-gps_weight = np.array([1/5., 1/5., 1/10.])
-for idx, t_ns in enumerate(dataset["frametimes_ns"]):
-    spline_estimator.AddGPSMeasurement(gps_ned_t[idx,:]-gps_ned_t[0,:], t_ns, gps_weight)
+# gps_ned_t = np.array(dataset["gps_local_ned"])
+# gps_weight = np.array([1/10., 1/10., 1/20.])
+# for idx, t_ns in enumerate(dataset["frametimes_slam_ns"]):
+#     spline_estimator.AddGPSMeasurement(gps_ned_t[idx,:]-gps_ned_t[0,:], t_ns, gps_weight)
 
 
 # optimize spline
@@ -269,16 +269,47 @@ flags = pvi.SplineOptimFlags.SO3 | pvi.SplineOptimFlags.R3 | pvi.SplineOptimFlag
 print("Init line delay: ",spline_estimator.GetRSLineDelay())
 spline_estimator.OptimizeFromTo(20, flags, recon, 0, 0)
 
-optim_gyro_bias = spline_estimator.GetGyroBias(int(20*1e9))
-optim_accl_bias = spline_estimator.GetAcclBias(int(20*1e9))
-print("Optimized gyro bias: ", optim_gyro_bias) 
-print("Optimized acclbias: ", optim_accl_bias)
-
 pt.io.WritePlyFile(os.path.join(base_path,"recon_output.ply"), recon, (255, 0, 0), 2)
-spline_estimator.UpdateCameraPoses(recon, False)
+spline_estimator.UpdateCameraPoses(recon, True)
 pvi.WriteSpline(spline_estimator, os.path.join(base_path,"spline_recon_"+run+".spline"))
 pt.io.WriteReconstruction(recon, os.path.join(base_path,"spline_recon_"+run+".recon"))
 pt.io.WritePlyFile(os.path.join(base_path,"spline_output_"+run+".ply"), recon, (255, 0, 0), 2)
+
+
+# calculate reprojection error per view
+spline_poses = {}
+spline_c_w = {}
+reproj_errors = []
+for v_id in sorted(recon.ViewIds):
+    view = recon.View(v_id)
+    cam = view.Camera().GetPosition()
+    t_ns = view.GetTimestamp()*1e9 
+    pose_vec = spline_estimator.GetCameraPose(int(t_ns))
+    R_c_w = R.from_matrix(view.Camera().GetOrientationAsRotationMatrix())
+    p_w_c = np.expand_dims(view.Camera().GetPosition(),1)   
+    error = 0
+
+    spline_poses[t_ns] = pose_vec[4:]
+    spline_c_w[t_ns] = -R.from_quat(pose_vec[0:4]).as_rotvec()
+    I = cv2.imread(os.path.join(base_path,run,str(int(t_ns))+".png"))
+    for t_id in view.TrackIds():
+        pt4 = recon.Track(t_id).Point()
+        pt3 = np.expand_dims(pt4[0:3]/pt4[3],1)
+        pt_in_cam = camera.CameraIntrinsics().CameraToImageCoordinates(R_c_w.as_matrix() @ (pt3 - p_w_c))
+        feat = view.GetFeature(t_id)
+        I = cv2.drawMarker(I, (int(feat.point[0]),int(feat.point[1])), (0,255,0),cv2.MARKER_CROSS)
+        I = cv2.drawMarker(I, (int(pt_in_cam[0]),int(pt_in_cam[1])), (0,255,255),cv2.MARKER_CROSS)
+        error += cv2.norm(feat.point - pt_in_cam)
+    cv2.imshow("Reprojection from Spline",I)
+    cv2.waitKey(0)
+    #print("Total reproj error: ",error/len(view.TrackIds))
+    reproj_errors.append(error/len(view.TrackIds()))
+print("Mean RS reprojection_error after optim: ",np.sum(reproj_errors)/len(reproj_errors))
+
+optim_gyro_bias = spline_estimator.GetGyroBias(int(5*1e9))
+optim_accl_bias = spline_estimator.GetAcclBias(int(5*1e9))
+print("Optimized gyro bias: ", optim_gyro_bias) 
+print("Optimized acclbias: ", optim_accl_bias)
 
 
 import matplotlib.pyplot as plt

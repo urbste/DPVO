@@ -20,9 +20,9 @@ dataset = load_dataset(
     os.path.join(base_path,"dpvo_result_run1.npz"),
     os.path.join(base_path,"run1.json"),
     None, inv_depth_thresh=0.5, 
-    scale_with_gps=False, align_with_grav=False, correct_heading=False)
+    scale_with_gps=False, align_with_grav=False, correct_heading=True)
 
-kf_t_ns = dataset["frametimes_ns"]
+kf_t_ns = dataset["frametimes_slam_ns"]
 gps_ned_coords = np.array(dataset["gps_local_ned"])
 
 spline = pvi.SplineTrajectoryEstimator()

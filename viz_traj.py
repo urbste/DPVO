@@ -57,7 +57,7 @@ map_pts_pcl1.colors = o3d.utility.Vector3dVector(dataset1["colors"])
 # mesh1.compute_vertex_normals()
 
 gps_pcl1 = o3d.geometry.PointCloud()
-gps_np = np.array(dataset1["gps_enu"])
+gps_np = np.array(dataset1["gps_local_ned"])
 gps_pcl1.points = o3d.utility.Vector3dVector(gps_np-gps_np[0,:])
 gps_pcl1.paint_uniform_color([1, 0.5, 0.5])
 # gps_pcl2 = o3d.geometry.PointCloud()

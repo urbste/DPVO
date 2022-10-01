@@ -14,6 +14,23 @@ from pymap3d import ecef2ned
 def ecef2ned_v(ecef, ll0):
     return ecef2ned(ecef[0],ecef[1],ecef[2], ll0[0], ll0[1], ll0[2])
 
+def interpolate_grav_at_times(grav_vector, grav_times_s, interp_times_s):
+
+    # find valid interval (interpolate only where we actually have gps measurements)
+    start_frame_time_idx = np.where(grav_times_s[0] < interp_times_s)[0][0]
+    end_frame_time_idx = np.where(grav_times_s[-1] <= interp_times_s)[0]
+    if not end_frame_time_idx:
+        end_frame_time_idx = len(interp_times_s)-1
+
+    interp_frame_times = interp_times_s[start_frame_time_idx:end_frame_time_idx]
+
+    x_interp = np.interp(interp_frame_times, grav_times_s, grav_vector[:,0])
+    y_interp = np.interp(interp_frame_times, grav_times_s, grav_vector[:,1])
+    z_interp = np.interp(interp_frame_times, grav_times_s, grav_vector[:,2])
+    frame_grav_interp = np.stack([x_interp,y_interp,z_interp],1)
+
+    return frame_grav_interp
+
 def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2, 
     scale_with_gps=False, align_with_grav=True, correct_heading=False):
 
@@ -33,7 +50,10 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     tel_importer = TelemetryImporter()
     tel_importer.read_gopro_telemetry(telemetry_file)
     gps_xyz, _ = tel_importer.get_gps_pos_at_frametimes(frametimes_slam_ns)
-    gravity_vectors = tel_importer.get_gravity_vector_at_times(frametimes_slam_ns)
+    gravity_vectors = interpolate_grav_at_times(
+        np.array(tel_importer.telemetry["gravity"]),
+        np.array(tel_importer.telemetry["img_timestamps_ns"])*1e-9,
+        np.array(frametimes_slam_ns) * 1e-9)  
     if llh0 == None:
         llh0 = tel_importer.telemetry["gps_llh"][0]
     
@@ -62,7 +82,7 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     gps_normalized = gps_ned_at_kfs-gps_ned_at_kfs[0]
     R_heading = np.eye(3)
     if correct_heading:
-        R_heading = R.from_rotvec([0,0,-get_heading_angle_diff(p_w_c, gps_normalized)]).as_matrix()
+        R_heading = R.from_rotvec([0,0,get_heading_angle_diff(p_w_c, gps_normalized)]).as_matrix()
         p_w_c = (R_heading @ p_w_c.T).T
         q_w_c = R.from_matrix(R.from_quat(q_w_c).inv().as_matrix() @ R_heading.T).inv().as_quat()
         valid_points = (R_heading @ valid_points.T).T
@@ -79,12 +99,13 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
         "map_scale": s,
         "gravity_vectors": gravity_vectors.tolist(),
         "gps_local_ned": gps_ned_at_kfs.tolist(),
-        "frametimes_ns": frametimes_slam_ns.tolist(),
+        "frametimes_slam_ns": frametimes_slam_ns.tolist(),
         "frame_ids": frame_ids,
         "ix": ix, "ii": ii, "kk": kk, "jj": jj,
         "accl": tel_importer.telemetry["accelerometer"],
         "gyro": tel_importer.telemetry["gyroscope"],
-        "imu_times": tel_importer.telemetry["timestamps_ns"]
+        "imu_times_ns": tel_importer.telemetry["timestamps_ns"],
+        "img_times_ns": tel_importer.telemetry["img_timestamps_ns"]
     }
 
     return dataset
