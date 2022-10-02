@@ -7,7 +7,8 @@ from natsort import natsorted
 
 def mvs_loader(image_dir, cam_mat, tstamps, poses, min_max_d):
 
-    h1, w1 = 512, 896
+    # h1, w1 = 512, 896 --> with refinement
+    h1, w1 = 480*2, 640*2
     images = []
     transform = Compose([Resize((h1, w1)), ToTensor()])
     h0, w0 = None, None

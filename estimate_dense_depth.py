@@ -57,12 +57,12 @@ def get_cam_pose_from_spline_at_time(spline, time_ns):
     return R_c_w, t_c_w, p_w_c, T_c_w
 
 
-mvsnet = CDSMVSNet(refine=True, ndepths=(128, 32, 8), depth_interals_ratio=(4, 2, 1))
+mvsnet = CDSMVSNet(refine=True, ndepths=(128, 32, 8), depth_interals_ratio=(4, 4, 1))
 mvsnet_ckpt = torch.load("cds_mvsnet.pth")
 state_dict = OrderedDict([
     (k.replace("module.", ""), v) for (k, v) in mvsnet_ckpt["state_dict"].items()
 ])
-mvsnet.load_state_dict(state_dict)
+mvsnet.load_state_dict(state_dict, strict=False)
 mvsnet.to("cuda:0").eval()
 
 
@@ -132,31 +132,31 @@ volume = o3d.pipelines.integration.ScalableTSDFVolume(
     sdf_trunc=0.04,
     color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8)
 
-for t in range(2, 150):
+for t in range(2, 20):
     print("Estimating depth for KF {}",t)
     tstamps = [kf_timstamps[t],kf_timstamps[t-1], kf_timstamps[t+1]]
     poses = torch.zeros(3, 4, 4).float()
     for idx, p in enumerate(tstamps):
         poses[idx,:,:] = torch.tensor(spline_[p])
-    images, proj_matrices, depth_values = mvs_loader(path_traj1, cam_mat, tstamps, poses, [0.5, 10.])
+    images, proj_matrices, depth_values = mvs_loader(path_traj1, cam_mat, tstamps, poses, [0.5, 20.])
 
     with torch.no_grad():
         mvs_outputs = mvsnet(images.cuda(), proj_matrices, depth_values.cuda(), temperature=0.01)
         final_depth = mvs_outputs["refined_depth"]
         mask = torch.ones_like(final_depth) > 0.0
-        for stage, thresh_conf in zip(["stage1", "stage2", "stage3"], [0.6, 0.7, 0.85]):
+        for stage, thresh_conf in zip(["stage1", "stage2", "stage3"], [0.7, 0.8, 0.9]):
             conf_stage = F.interpolate(mvs_outputs[stage]["photometric_confidence"].unsqueeze(1),
                                         (mask.size(1), mask.size(2))).squeeze(1)
             mask = mask & (conf_stage > thresh_conf)
         final_depth[~mask] = 1000
 
         final_depth = final_depth.squeeze(0)
-        # _, (ax1, ax2, ax3) = plt.subplots(3,1)
-        # ax1.imshow(final_depth.squeeze(0).cpu().numpy(), cmap='jet', vmin = 1e-6,vmax = 10.)
-        # ax2.imshow(images.squeeze(0)[0,0,...].cpu().numpy())
-        # ax3.imshow(conf_stage.squeeze(0).cpu().numpy())
+        _, (ax1, ax2, ax3) = plt.subplots(3,1)
+        ax1.imshow(final_depth.squeeze(0).cpu().numpy(), cmap='jet', vmin = 1e-6,vmax = 20.)
+        ax2.imshow(images.squeeze(0)[0,0,...].cpu().numpy())
+        ax3.imshow(conf_stage.squeeze(0).cpu().numpy())
 
-        # plt.show()
+        plt.show()
 
     color = np.ascontiguousarray(images.squeeze(0)[0,...].permute(1, 2, 0).cpu().numpy()*255).astype(np.uint8)
     depth_img = np.ascontiguousarray(final_depth.squeeze(0).cpu().numpy()).astype(np.float32)

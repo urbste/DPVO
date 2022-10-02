@@ -7,20 +7,21 @@ import numpy as np
 class PlaceRecognition:
     def __init__(self, img_folder, kf_timestamps, img_size=(640,480)):
         # construct a tree supporting some descriptor size (64,128,256,512)
-        self.tree = pyhbst.BinarySearchTree256() # descriptor size 256-bit
+        self.tree = pyhbst.BinarySearchTree512() # descriptor size 256-bit
 
-        self.orb = cv2.ORB_create(1000, 1.2, 2, 32, 0, 2, 0, 25, 20)
+        #self.orb = cv2.ORB_create(5000, 1.2, 4, 32, 0, 2, 0, 25, 10)
         # Initiate FAST detector
         # Initiate FAST object with default values
-        #self.fast = cv2.FastFeatureDetector_create(threshold=60, nonmaxSuppression=True)
+        self.fast = cv2.FastFeatureDetector_create(threshold=50, nonmaxSuppression=True)
         # Initiate BRIEF extractor
-        #self.brief = cv2.xfeatures2d.BriefDescriptorExtractor_create(64, False)
+        self.brief = cv2.xfeatures2d.BriefDescriptorExtractor_create(64, False)
 
         self.img_size = img_size
         self.idx_to_t_ns1 = {}
         self.last_idx_database = 0
 
         self.kf_t_ns_1 = kf_timestamps
+        self.img_folder_ref = img_folder
 
         print("Adding images to tree. Might take some time.")
         imglist = natsort.natsorted(os.listdir(img_folder))
@@ -33,9 +34,11 @@ class PlaceRecognition:
             I = self.load_image(os.path.join(img_folder, i_name))
             kpts, desc = self.get_features(I)
 
+            if len(kpts) < 1500:
+                continue
             self.tree.add(kpts, desc, idx, pyhbst.SplitEven)
             self.idx_to_t_ns1[idx] = t_ns
-            if idx % 100 == 0:
+            if idx % 1 == 0:
                 print("Added {}/{} images to tree.".format(idx, len(kf_timestamps)))
                 print("num kpts", len(kpts))
 
@@ -48,9 +51,9 @@ class PlaceRecognition:
         return cv2.resize(cv2.imread(path,0), self.img_size)
 
     def get_features(self, img):
-        kpts, desc = self.orb.detectAndCompute(img, None)
-        #kpts = self.fast.detect(img, None)
-        #kpts, desc = self.brief.compute(img, kpts, None)
+        #kpts, desc = self.orb.detectAndCompute(img, None)
+        kpts = self.fast.detect(img, None)
+        kpts, desc = self.brief.compute(img, kpts, None)
         kpts_list = [list(kpt.pt) for kpt in kpts]
 
         #img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
@@ -78,6 +81,9 @@ class PlaceRecognition:
 
             I = self.load_image(os.path.join(img_folder, i_name))
             kpts, desc = self.get_features(I)
+            if len(kpts) < 1500:
+                print("Skip not enough keypoints")
+                continue
             #cv2.imshow("current image", I)
             #cv2.waitKey(10)
 
@@ -93,9 +99,10 @@ class PlaceRecognition:
                     t_ns1_to_t_ns2.append([ref_t_ns, t_ns])
 
                     if debug:
-                        Iref = self.load_image(os.path.join(img_folder, str(ref_t_ns)+".png"))
-                        cv2.imshow("matching kfs", np.concatenate([Iref, I],1))
+                        Iref = self.load_image(os.path.join(self.img_folder_ref, str(ref_t_ns)+".png"))
+                        cv2.imshow("matching kfs", np.concatenate([I, Iref],1))
                         cv2.waitKey(0)
+                    break
             idx += 1
     def __del__(self):
         self.tree.clear(True)
@@ -121,12 +128,32 @@ dataset2 = load_dataset(
     llh0, inv_depth_thresh=0.5, 
     scale_with_gps=False, align_with_grav=False, correct_heading=False)
 
-kfs1_tns = dataset1["frametimes_ns"]
-kfs2_tns = dataset2["frametimes_ns"]
+kfs1_tns = dataset1["frametimes_slam_ns"]
+kfs1_tns = kfs1_tns[::20]
+print("Adding {} kfs".format(len(kfs1_tns)))
+kfs2_tns = dataset2["frametimes_slam_ns"]
+
+# const_to_base_trail = {
+#     2316785000: {"time_base": 3136812000},
+#     5616785000: {"time_base": 6516812000},
+#     6816785000: {"time_base": 7816812000},
+#     10696785000: {"time_base": 11816812000},
+#     13116785000: {"time_base": 14176812000},
+#     17716785000: {"time_base": 19016812000},
+#     21696785000: {"time_base": 23256812000},
+#     23676785000: {"time_base": 25176812000},
+#     26416785000: {"time_base": 27936812000},
+#     40516785000: {"time_base": 42516812000},
+#     103816785000: {"time_base": 106496812000},
+#     137716785000: {"time_base": 145816812000}
+# }
 
 # create database with first dataset
+#kfs2_tns = list(const_to_base_trail.keys())
+#kfs1_tns = [const_to_base_trail[o]["time_base"] for o in const_to_base_trail]
 matcher = PlaceRecognition(os.path.join(base_path,"run1"), kfs1_tns)
 
+
 matcher.localize_img_folder(
-    os.path.join(base_path,"run2"), kfs2_tns, min_matches=30, hamming_dist=45, debug=True)
+    os.path.join(base_path,"run2"), kfs2_tns, min_matches=10, hamming_dist=50, debug=True)
 

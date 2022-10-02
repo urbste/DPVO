@@ -96,22 +96,33 @@ def main(ctx):
     #a_file.close()
 
     
-    spline = pvi.SplineTrajectoryEstimator()
-    pvi.ReadSpline(spline, 
+    spline1 = pvi.SplineTrajectoryEstimator()
+    pvi.ReadSpline(spline1, 
+        os.path.join(base_path,"spline_recon_run1.spline"))
+    spline2 = pvi.SplineTrajectoryEstimator()
+    pvi.ReadSpline(spline2, 
         os.path.join(base_path,"spline_recon_run2.spline"))
     # generate image poses
-    image_folder = os.listdir(os.path.join(base_path,"run2"))
+    image_folder1 = os.listdir(os.path.join(base_path,"run1"))
     timestamps1 = natsort.natsorted(
-        [os.path.splitext(os.path.basename(p))[0] for p in image_folder])
-    p1 = []
-    q1 = []
+        [os.path.splitext(os.path.basename(p))[0] for p in image_folder1])
+    image_folder2 = os.listdir(os.path.join(base_path,"run1"))
+    timestamps2 = natsort.natsorted(
+        [os.path.splitext(os.path.basename(p))[0] for p in image_folder2])
+    p1, p2 = [], []
+    q1, q2 = [], []
     for t_ns in timestamps1:
-        R_w_c, _, p_w_c = get_cam_pose_from_spline_at_time(spline, t_ns)
+        R_w_c, _, p_w_c = get_cam_pose_from_spline_at_time(spline1, t_ns)
         p1.append(p_w_c.squeeze())
         q1.append(R.from_matrix(R_w_c.T).as_quat())
+    for t_ns in timestamps2:
+        R_w_c, _, p_w_c = get_cam_pose_from_spline_at_time(spline2, t_ns)
+        p2.append(p_w_c.squeeze())
+        q2.append(R.from_matrix(R_w_c.T).as_quat())
     q1 = np.array(q1)
     p1 = np.array(p1)
-
+    q2 = np.array(q2)
+    p2 = np.array(p2)
     cfg = Ogre.ConfigFile()
     cfg.loadDirect("ogre_resources.cfg")
     rgm = Ogre.ResourceGroupManager.getSingleton()
@@ -130,11 +141,11 @@ def main(ctx):
     cam.setFarClipDistance(4.0)
     win = ctx.getRenderWindow().addViewport(cam)
 
-    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,0.5]), [1,0,0])
+    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,1.5]), [1,0,0])
     line1_node.setVisible(True)
 
-    #line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,-1.25]), [0,1,0])
-    #line2_node.setVisible(True)
+    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,1.5]), [0,1,0])
+    line2_node.setVisible(True)
 
     camnode = scn_mgr.getRootSceneNode().createChildSceneNode()
 
