@@ -117,6 +117,9 @@ class DPVOAligner:
         # if self.cfg.MIXED_PRECISION:
         #     self.network.half()
 
+    def set_patches(self, patches):
+
+        self.patches_[0] = torch.tensor(patches).cuda()
 
     def start_viewer(self):
         from dpviewer import Viewer

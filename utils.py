@@ -1,4 +1,5 @@
 import numpy as np
+import os
 from telemetry_converter import TelemetryImporter
 from natsort import natsorted
 from gps_converter import ECEFtoNED
@@ -109,6 +110,40 @@ def load_dataset(path, telemetry_file, llh0, inv_depth_thresh=0.2,
     }
 
     return dataset
+
+def update_dataset_patches(path, recon, view_ids_to_pt_ids):
+    data = np.load(path)
+    poses_w_c = data["kf_poses"]
+    num_kfs = poses_w_c.shape[0]
+    frametimes_slam_ns = data["image_tstamps"].astype(np.int64)[:num_kfs]
+    patches = data["patches"]
+
+    for vid in view_ids_to_pt_ids:
+        pt_ids = view_ids_to_pt_ids[vid]
+        for cnt, tid in enumerate(pt_ids):
+            track = recon.Track(tid)
+            if track:
+                d, _ = recon.View(vid).Camera().ProjectPoint(track.Point())
+                patches[vid,cnt,2,:,:] = 1/d    
+        
+    path_to_file = os.path.dirname(path)
+    filename_ext = os.path.basename(path)
+    filename = os.path.splitext(filename_ext)[0]
+
+    np.savez(os.path.join(path_to_file, filename + "_spline"), 
+        all_poses=data["all_poses"], 
+        kf_poses=data["kf_poses"],
+        tstamps=data["tstamps"], 
+        image_tstamps=data["image_tstamps"], 
+        patches=patches, 
+        ix=data["ix"], 
+        ii=data["ii"],  
+        jj=data["jj"], 
+        kk=data["kk"], 
+        intrinsics=data["intrinsics"],
+        points=data["points"],
+        pt_colors=data["pt_colors"])
+
 
 def load_pytheia_cam_calib(datapath, scale=1):
     import pytheia as pt

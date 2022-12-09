@@ -141,10 +141,10 @@ def main(ctx):
     cam.setFarClipDistance(4.0)
     win = ctx.getRenderWindow().addViewport(cam)
 
-    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,1.5]), [1,0,0])
+    line1_node = create_traj_line("line1", "linemat1", scn_mgr, p1+np.array([0,0,1]), [1,0,0])
     line1_node.setVisible(True)
 
-    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,1.5]), [0,1,0])
+    line2_node = create_traj_line("line2", "linemat2", scn_mgr, p2+np.array([0,0,1]), [0,1,0])
     line2_node.setVisible(True)
 
     camnode = scn_mgr.getRootSceneNode().createChildSceneNode()

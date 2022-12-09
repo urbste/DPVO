@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pyvisfm as pvi
 import pytheia as pt
-from utils import load_dataset
+from utils import load_dataset, update_dataset_patches
 from telemetry_converter import TelemetryImporter
 import torch
 from dpvo import projective_ops as pops
@@ -60,7 +60,7 @@ def create_pt_recon_from_vo(vo_data, win_size):
     pt_camera_intr = get_cam_intrinsics(vo_intrinsics, scale=4)
 
     poses = np.concatenate(
-        [np.array(dataset["p_w_c"]), np.array(dataset["q_w_c"])],1)
+        [np.array(vo_data["p_w_c"]), np.array(vo_data["q_w_c"])],1)
 
     # read some frames to test stuff
     patches = np.array(vo_data["patches"])
@@ -68,6 +68,7 @@ def create_pt_recon_from_vo(vo_data, win_size):
     # num_patches_per_img = patches.shape[1]
     #total_num_patches = patches.shape[0]*patches.shape[1]
     # flattened_patches = torch.tensor(patches).view(1, total_num_patches, 3, 3, 3)
+
 
     # first add patches for each view
     view_ids_to_pt_ids = {}
@@ -86,7 +87,7 @@ def create_pt_recon_from_vo(vo_data, win_size):
             view_ids_to_pt_ids[view_id].append(t_id)
 
     # now add views and observations
-    t_ns = vo_data["frametimes_slam_ns"] # starts at 0 with video time
+    t_ns = sorted(vo_data["frametimes_slam_ns"]) # starts at 0 with video time
     for i, t_ in enumerate(t_ns):
         v_id = recon.AddView(str(t_), 0, t_*1e-9)
         v = recon.MutableView(v_id)
@@ -96,7 +97,8 @@ def create_pt_recon_from_vo(vo_data, win_size):
         cam.SetPosition(poses[i,0:3])
         cam.SetOrientationFromRotationMatrix(R_w_c.T)
         v.SetIsEstimated(True)
-
+        
+    std_2d = 1.0
     # now create observations by projecting to neighboring frames
     v_ids = natsort.natsorted(recon.ViewIds)
     start_id = v_ids[win_size]
@@ -110,12 +112,12 @@ def create_pt_recon_from_vo(vo_data, win_size):
             for v_n in v_ids_neighbor:
                 d, pt2 = recon.View(v_n).Camera().ProjectPoint(recon.Track(t_id).Point())
                 # check if point is in image and depth is not too large or too small
-                if d > 20 or d < 0.1:
+                if d > 10 or d < 0.1:
                     continue
                 if pt2[0] < 0.0 or pt2[1] > pt_camera_intr.ImageWidth() or \
                    pt2[1] < 0.0 or pt2[1] > pt_camera_intr.ImageHeight():
                    continue
-                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*1))
+                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*std_2d))
     
     # do the same for the start and end frames
     for v_id in range(0, win_size-1):
@@ -125,12 +127,12 @@ def create_pt_recon_from_vo(vo_data, win_size):
             for v_n in v_ids_neighbor:
                 d, pt2 = recon.View(v_n).Camera().ProjectPoint(recon.Track(t_id).Point())
                 # check if point is in image and depth is not too large or too small
-                if d > 20 or d < 0.1:
+                if d > 10 or d < 0.1:
                     continue
                 if pt2[0] < 0.0 or pt2[1] > pt_camera_intr.ImageWidth() or \
                    pt2[1] < 0.0 or pt2[1] > pt_camera_intr.ImageHeight():
                    continue
-                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*0.5))
+                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*std_2d))
     # do the same for the start and end frames
     for v_id in range(v_ids[-win_size+1], v_ids[-1]+1):
         v_ids_neighbor = list(range(v_id - win_size + 1, v_id + 1))
@@ -139,12 +141,12 @@ def create_pt_recon_from_vo(vo_data, win_size):
             for v_n in v_ids_neighbor:
                 d, pt2 = recon.View(v_n).Camera().ProjectPoint(recon.Track(t_id).Point())
                 # check if point is in image and depth is not too large or too small
-                if d > 20 or d < 0.1:
+                if d > 10 or d < 0.1:
                     continue
                 if pt2[0] < 0.0 or pt2[1] > pt_camera_intr.ImageWidth() or \
                    pt2[1] < 0.0 or pt2[1] > pt_camera_intr.ImageHeight():
                    continue
-                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, 0.5*np.eye(2)))
+                recon.AddObservation(v_n, t_id, pt.sfm.Feature(pt2, np.eye(2)*std_2d))
 
     print("Reconstruction created. Statistics:")
     # print("Number views {}. Number tracks: {}")
@@ -153,8 +155,10 @@ def create_pt_recon_from_vo(vo_data, win_size):
     for tid in recon.TrackIds:
         mut_track = recon.MutableTrack(tid)
         if mut_track.ReferenceViewId() == pt.sfm.kInvalidViewId:
-            recon.RemoveTrack(tid)
-            continue
+           recon.RemoveTrack(tid)
+        #    print("here why?")
+        #    print(tid)
+           continue
         ref_view = recon.View(mut_track.ReferenceViewId())
         feature = ref_view.GetFeature(tid)
         ref_cam = ref_view.Camera()
@@ -182,29 +186,29 @@ def create_pt_recon_from_vo(vo_data, win_size):
     # cv2.imshow("projected_patches", np.concatenate(Is,1))
     # cv2.waitKey(0)
 
-    return recon, pt_camera_intr
+    return recon, pt_camera_intr, view_ids_to_pt_ids
 
 base_path = "/media/Data/Sparsenet/Ammerbach/Links"
-run = "run2"
+run = "run1"
 tel_json = run+".json"
 dpvo_res = "dpvo_result_"+run+".npz"
 
-add_base_trail_constrains = True
+add_base_trail_constrains = False
 # time trail2 -> trail1 : position constrain, rotation constrain
-const_to_base_trail = {
-    2316785000: {"time_base": 3136812000},
-    5616785000: {"time_base": 6516812000},
-    6816785000: {"time_base": 7816812000},
-    10696785000: {"time_base": 11816812000},
-    13116785000: {"time_base": 14176812000},
-    17716785000: {"time_base": 19016812000},
-    21696785000: {"time_base": 23256812000},
-    23676785000: {"time_base": 25176812000},
-    26416785000: {"time_base": 27936812000},
-    40516785000: {"time_base": 42516812000},
-    103816785000: {"time_base": 106496812000},
-    137716785000: {"time_base": 145816812000}
-}
+# const_to_base_trail = {
+#     2316785000: {"time_base": 3136812000},
+#     5616785000: {"time_base": 6516812000},
+#     6816785000: {"time_base": 7816812000},
+#     10696785000: {"time_base": 11816812000},
+#     13116785000: {"time_base": 14176812000},
+#     17716785000: {"time_base": 19016812000},
+#     21696785000: {"time_base": 23256812000},
+#     23676785000: {"time_base": 25176812000},
+#     26416785000: {"time_base": 27936812000},
+#     40516785000: {"time_base": 42516812000},
+#     103816785000: {"time_base": 106496812000},
+#     137716785000: {"time_base": 145816812000}
+# }
 
 
 # load telemetry
@@ -218,7 +222,11 @@ dataset = load_dataset(
     None, inv_depth_thresh=0.5, 
     scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
+constrains = {}
 if add_base_trail_constrains:
+    import json
+    with open(os.path.join(base_path, "matching_kfs_run1_run2.json"), "r") as f:
+        ref_to_query_constrain = json.load(f)
     base_trail_spline_path = os.path.join(base_path, "spline_recon_run1.spline")
     print("Loading base trail spline from {}.".format(base_trail_spline_path))
 
@@ -226,14 +234,15 @@ if add_base_trail_constrains:
     pvi.ReadSpline(base_spline, base_trail_spline_path)
 
     # get constrains
-    print("Adding {} position constrains.".format(len(const_to_base_trail)))
-    for c in const_to_base_trail:
-        base_time_cons_ns = const_to_base_trail[c]["time_base"]
-        base_p_w_i = base_spline.GetPose(base_time_cons_ns)
-        const_to_base_trail[c]["base_p_w_i"] = base_p_w_i[4:]
+    print("Adding {} position constrains.".format(len(ref_to_query_constrain)))
+    for ref_t_ns in ref_to_query_constrain:
+        query_t_ns = ref_to_query_constrain[ref_t_ns]
+        base_p_w_i = base_spline.GetPose(int(ref_t_ns))
+        constrains[query_t_ns] = base_p_w_i
 
-q_r3 = 0.99
-q_so3 = 0.99
+
+q_r3 = 0.9999
+q_so3 = 0.98
 acc_white_noise_var = 0.0196602**2
 gyr_white_noise_var = 0.00154431**2
 gyro_np = np.array(dataset["gyro"])
@@ -251,14 +260,14 @@ so3_dt, so3_var,_,_ = knot_spacing_and_variance(
 #gyr_weight_vec = [1/np.sqrt(g_wx+gyr_var_n),1/np.sqrt(g_wy+gyr_var_n),1/np.sqrt(g_wz+gyr_var_n)]
 #accl_weight_vec = [1/np.sqrt(a_wx+acc_var_n),1/np.sqrt(a_wy+acc_var_n),1/np.sqrt(a_wz+acc_var_n)]
 gyr_weight_vec = [1/np.sqrt(so3_var),1/np.sqrt(so3_var),1/np.sqrt(so3_var)]
-accl_weight_vec = [1/np.sqrt(r3_var),1/np.sqrt(r3_var),1/np.sqrt(r3_var)] # weight z down, there is no movement in that direction
+accl_weight_vec = [1/np.sqrt(r3_var)*4,1/np.sqrt(r3_var)*4,1/np.sqrt(r3_var)*4] # weight z down, there is no movement in that direction
 print("Gyroscope weighting factor:     {:.3f}/{:.3f}/{:.3f}. Knot spacing SO3: {:.3f}".format(
     gyr_weight_vec[0],gyr_weight_vec[1],gyr_weight_vec[2],so3_dt))
 print("Accelerometer weighting factor: {:.3f}/{:.3f}/{:.3f}. Knot spacing R3: {:.3f}".format(
     accl_weight_vec[0],accl_weight_vec[1],accl_weight_vec[2],r3_dt))
 
 print("Creating a pyTheiaSfM reconstruction.")
-recon, camera = create_pt_recon_from_vo(dataset, 3)
+recon, camera, view_ids_to_pt_ids = create_pt_recon_from_vo(dataset, 2)
 print("Finished creating a pyTheiaSfM reconstruction.")
 R_i_c, t_i_c, T_i_c = load_camera_imu_calibration("calib/cam_imu_calib_result_GX018770.json")
 # initialize a spline
@@ -287,15 +296,19 @@ for i in range(len(telemetry.telemetry["gyroscope"])):
 accl_tns = sorted(list(accl_meas.keys()))
 
 for vid in recon.ViewIds:
-    spline_estimator.AddRSInvCameraMeasurement(recon.View(vid), recon, 10.0)
+    spline_estimator.AddRSInvCameraMeasurement(recon.View(vid), recon, 6.0)
 
 # add pose graph constrains from base trail
 if add_base_trail_constrains:
     print("Adding base trail constrains")
-    std_position_constrain = 0.001
-    for t_ns in const_to_base_trail:
+    std_position_constrain = 0.01
+    std_orientation_constrain = 10 * np.pi/180
+    for t_ns in constrains:
         spline_estimator.AddPositionMeasurement(
-            const_to_base_trail[t_ns]["base_p_w_i"],t_ns,1/std_position_constrain)
+            constrains[t_ns][4:],t_ns,1/std_position_constrain)
+        spline_estimator.AddOrientationMeasurement(
+            R.from_quat(constrains[t_ns][:4]).as_matrix(),
+            t_ns, 1/std_orientation_constrain)
 
 # add some GPS measurements
 if not add_base_trail_constrains:
@@ -307,40 +320,41 @@ if not add_base_trail_constrains:
         spline_estimator.AddGPSMeasurement(gps_ned_t[idx,:]-gps_ned_t[0,:], t_ns, gps_weight)
 
 # optimize spline
-flags = pvi.SplineOptimFlags.SO3 | pvi.SplineOptimFlags.R3 | pvi.SplineOptimFlags.POINTS |  pvi.SplineOptimFlags.IMU_BIASES
+flags = pvi.SplineOptimFlags.SO3 | pvi.SplineOptimFlags.R3 | pvi.SplineOptimFlags.POINTS  | pvi.SplineOptimFlags.IMU_BIASES
 print("Init line delay: ",spline_estimator.GetRSLineDelay())
 spline_estimator.OptimizeFromTo(15, flags, recon, 0, 0)
 
-pt.io.WritePlyFile(os.path.join(base_path,"recon_output.ply"), recon, (255, 0, 0), 2)
+# pt.io.WritePlyFile(os.path.join(base_path,"recon_output.ply"), recon, (255, 0, 0), 2)
 
 spline_estimator.UpdateCameraPoses(recon, True)
 # calculate reprojection error per view
 reproj_errors = []
 for v_id in sorted(recon.ViewIds):
     view = recon.View(v_id)
-    cam = view.Camera().GetPosition()
     t_ns = view.GetTimestamp()*1e9 
-    pose_vec = spline_estimator.GetCameraPose(int(t_ns))
-    R_w_c = R.from_quat(pose_vec[:4])
-    p_w_c = np.expand_dims(pose_vec[4:],1)   
     error = 0
 
-    #I = cv2.imread(os.path.join(base_path,run,str(int(t_ns))+".png"))
+    I = cv2.imread(os.path.join(base_path,run,str(int(t_ns))+".png"))
     for t_id in view.TrackIds():
+        feat = view.GetFeature(t_id)
+
         pt4 = recon.Track(t_id).Point()
         pt3 = np.expand_dims(pt4[0:3]/pt4[3],1)
+        pose_vec = spline_estimator.GetCameraPose(int(t_ns + 1e9*spline_estimator.GetRSLineDelay()*feat.point[0]))
+        R_w_c = R.from_quat(pose_vec[:4])
+        p_w_c = np.expand_dims(pose_vec[4:],1)   
+
         pt_in_cam = camera.CameraIntrinsics().CameraToImageCoordinates(R_w_c.as_matrix().T @ (pt3 - p_w_c))
-        feat = view.GetFeature(t_id)
-        #I = cv2.drawMarker(I, (int(feat.point[0]),int(feat.point[1])), (0,255,0),cv2.MARKER_CROSS)
-        #I = cv2.drawMarker(I, (int(pt_in_cam[0]),int(pt_in_cam[1])), (0,255,255),cv2.MARKER_CROSS)
+        I = cv2.drawMarker(I, (int(feat.point[0]),int(feat.point[1])), (0,255,0),cv2.MARKER_CROSS)
+        I = cv2.drawMarker(I, (int(pt_in_cam[0]),int(pt_in_cam[1])), (0,255,255),cv2.MARKER_CROSS)
         repro_err = cv2.norm(feat.point - pt_in_cam)
 
-        if repro_err > 5.0:
-            recon.RemoveTrack(t_id)
-            # print("Removing Track. Reprojection error too high: {:.2f}".format(repro_err))
+        #if repro_err > 5.0:
+        #    recon.RemoveTrack(t_id)
+        #    # print("Removing Track. Reprojection error too high: {:.2f}".format(repro_err))
         error += repro_err
-    #cv2.imshow("Reprojection from Spline",I)
-    #cv2.waitKey(telemetry.telemetry["camera_fps"])
+    cv2.imshow("Reprojection from Spline",I)
+    cv2.waitKey(telemetry.telemetry["camera_fps"])
     reproj_errors.append(error/len(view.TrackIds()))
 print("Mean RS reprojection_error after optim: ",np.sum(reproj_errors)/len(reproj_errors))
 
@@ -353,6 +367,8 @@ pvi.WriteSpline(spline_estimator, os.path.join(base_path,"spline_recon_"+run+".s
 pt.io.WriteReconstruction(recon, os.path.join(base_path,"spline_recon_"+run+".recon"))
 pt.io.WritePlyFile(os.path.join(base_path,"spline_output_"+run+".ply"), recon, (255, 0, 0), 2)
 
+
+update_dataset_patches(os.path.join(base_path,dpvo_res), recon, view_ids_to_pt_ids)
 
 import matplotlib.pyplot as plt
 

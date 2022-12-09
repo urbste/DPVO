@@ -8,23 +8,23 @@ from utils import load_dataset
 # import GPS data
 global_enu_llh0 = 0
 
-base_path = "/media/Data/Sparsenet/TestAlignment"
+base_path = "/media/Data/Sparsenet/Ammerbach/Links"
 tel_importer = TelemetryImporter()
-tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike1_trail1_linear.json"))
+tel_importer.read_gopro_telemetry(os.path.join(base_path,"run1.json"))
 llh01 = tel_importer.telemetry["gps_llh"][0]
 tel_importer = TelemetryImporter()
-tel_importer.read_gopro_telemetry(os.path.join(base_path,"bike2_trail1_linear.json"))
+tel_importer.read_gopro_telemetry(os.path.join(base_path,"run2.json"))
 llh02 = tel_importer.telemetry["gps_llh"][0]
 
 dataset1 = load_dataset(
-    os.path.join(base_path,"dpvo_result_bike1_trail1_linear.npz"),
-    os.path.join(base_path,"bike1_trail1_linear.json"),
-    llh01, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=True)
+    os.path.join(base_path,"dpvo_result_run1.npz"),
+    os.path.join(base_path,"run1.json"),
+    None, inv_depth_thresh=0.01, scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
 dataset2 = load_dataset(
-    os.path.join(base_path,"dpvo_result_bike2_trail1_linear.npz"),
-    os.path.join(base_path,"bike2_trail1_linear.json"),
-    llh01, inv_depth_thresh=0.5, scale_with_gps=True, align_with_grav=True, correct_heading=True)
+    os.path.join(base_path,"dpvo_result_run2.npz"),
+    os.path.join(base_path,"run2.json"),
+    None, inv_depth_thresh=0.01, scale_with_gps=True, align_with_grav=True, correct_heading=True)
 
 
 pcl1 = o3d.geometry.PointCloud()
@@ -32,7 +32,7 @@ pcl1.points = o3d.utility.Vector3dVector(dataset1["p_w_c"])
 pcl1.paint_uniform_color([0, 0.706, 0])
 
 pcl2 = o3d.geometry.PointCloud()
-pcl2.points = o3d.utility.Vector3dVector(dataset1["p_w_c"]-np.array([0,0,1.5]))
+pcl2.points = o3d.utility.Vector3dVector(dataset2["p_w_c"])
 pcl2.paint_uniform_color([1, 0, 0])
 
 #pcl2 = o3d.geometry.PointCloud()
@@ -42,9 +42,9 @@ pcl2.paint_uniform_color([1, 0, 0])
 map_pts_pcl1 = o3d.geometry.PointCloud()
 map_pts_pcl1.points = o3d.utility.Vector3dVector(dataset1["points"])
 map_pts_pcl1.colors = o3d.utility.Vector3dVector(dataset1["colors"])
-#map_pts_pcl2 = o3d.geometry.PointCloud()
-#map_pts_pcl2.points = o3d.utility.Vector3dVector(dataset2["points"])
-#map_pts_pcl2.colors = o3d.utility.Vector3dVector(dataset2["colors"])
+map_pts_pcl2 = o3d.geometry.PointCloud()
+map_pts_pcl2.points = o3d.utility.Vector3dVector(dataset2["points"])
+map_pts_pcl2.colors = o3d.utility.Vector3dVector(dataset2["colors"])
 
 # map_pts_pcl1.estimate_normals()
 # map_pts_pcl2.estimate_normals()
@@ -72,19 +72,20 @@ visualizer.create_window(width=600, height=500, left=450, top=250)
 visualizer.add_geometry(pcl1)
 visualizer.add_geometry(pcl2)
 visualizer.add_geometry(map_pts_pcl1)
+visualizer.add_geometry(map_pts_pcl2)
+
 p_w_cs = np.array(dataset1["p_w_c"])
 q_w_cs = np.array(dataset1["q_w_c"])
 
 from scipy.spatial.transform import Rotation as R 
-for i in range(p_w_cs.shape[0]):
-    T = np.eye(4)
-    T[:3,:3] = R.from_quat(q_w_cs[i,:]).as_matrix()
-    T[:3,3] = p_w_cs[i,:]
-    cam_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5, origin=[0, 0, 0])
-    visualizer.add_geometry(cam_frame.transform(T))
+# for i in range(p_w_cs.shape[0]):
+#     T = np.eye(4)
+#     T[:3,:3] = R.from_quat(q_w_cs[i,:]).as_matrix()
+#     T[:3,3] = p_w_cs[i,:]
+#     cam_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5, origin=[0, 0, 0])
+#     visualizer.add_geometry(cam_frame.transform(T))
 
 #visualizer.add_geometry(mesh1)
-#visualizer.add_geometry(map_pts_pcl2)
 visualizer.add_geometry(gps_pcl1)
 #visualizer.add_geometry(gps_pcl2)
 visualizer.add_geometry(world_frame)

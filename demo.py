@@ -59,11 +59,11 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--network', type=str, default='dpvo.pth')
-    parser.add_argument('--imagedir', type=str, default="/media/Data/Sparsenet/OrbSlam3/TestMappingRelocalization/JenzigTrailsJune/bike1_trail1_linear.MP4")
+    parser.add_argument('--imagedir', type=str, default="")
     parser.add_argument('--calib', type=str, default="calib/gopro9_1440_linear.txt")
     parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--skip', type=int, default=0)
-    parser.add_argument('--config', default="config/medium.yaml")
+    parser.add_argument('--config', default="config/default.yaml")
     parser.add_argument('--timeit', action='store_true')
     parser.add_argument('--viz', action="store_true")
     parser.add_argument('--start_t_ns', type=int, default=0)
