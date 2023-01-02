@@ -15,6 +15,15 @@ import os.path as osp
 from .augmentation import RGBDAugmentor
 from .rgbd_utils import *
 
+train_list = ["datasets/TartanAir/abandonedfactory/abandonedfactory/Easy/P001",
+"datasets/TartanAir/abandonedfactory/abandonedfactory/Easy/P002",
+"datasets/TartanAir/abandonedfactory/abandonedfactory/Easy/P004",
+"datasets/TartanAir/abandonedfactory/abandonedfactory/Easy/P005",
+"datasets/TartanAir/amusement/amusement/Easy/P001",
+"datasets/TartanAir/amusement/amusement/Easy/P002",
+"datasets/TartanAir/amusement/amusement/Easy/P003",
+"datasets/TartanAir/amusement/amusement/Easy/P004"]
+
 class RGBDDataset(data.Dataset):
     def __init__(self, name, datapath, n_frames=4, crop_size=[480,640], fmin=10.0, fmax=75.0, aug=True, sample=True):
         """ Base class for RGBD dataset """
@@ -40,6 +49,8 @@ class RGBDDataset(data.Dataset):
         self.scene_info = \
             pickle.load(open('datasets/TartanAir.pickle', 'rb'))[0]
 
+        self.scene_info = {k: self.scene_info[k] for k in train_list}
+
         self._build_dataset_index()
                 
     def _build_dataset_index(self):
@@ -55,11 +66,11 @@ class RGBDDataset(data.Dataset):
 
     @staticmethod
     def image_read(image_file):
-        return cv2.imread(image_file)
+        return cv2.resize(cv2.imread(image_file),(320,240))
 
     @staticmethod
     def depth_read(depth_file):
-        return np.load(depth_file)
+        return np.load(depth_file)[::2,::2]
 
     def build_frame_graph(self, poses, depths, intrinsics, f=16, max_flow=256):
         """ compute optical flow distance between all pairs of frames """
@@ -148,7 +159,7 @@ class RGBDDataset(data.Dataset):
         images = np.stack(images).astype(np.float32)
         depths = np.stack(depths).astype(np.float32)
         poses = np.stack(poses).astype(np.float32)
-        intrinsics = np.stack(intrinsics).astype(np.float32)
+        intrinsics = np.stack(intrinsics).astype(np.float32)/2
 
         images = torch.from_numpy(images).float()
         images = images.permute(0, 3, 1, 2)

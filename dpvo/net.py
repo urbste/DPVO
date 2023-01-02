@@ -107,7 +107,7 @@ class Patchifier(nn.Module):
         g = F.avg_pool2d(g, 4, 4)
         return g
 
-    def forward(self, images, patches_per_image=80, disps=None, gradient_bias=False, return_color=False):
+    def forward(self, images, patches_per_image=30, disps=None, gradient_bias=False, return_color=False):
         """ extract patches from input images """
         fmap = self.fnet(images) / 4.0
         imap = self.inet(images) / 4.0
@@ -197,7 +197,7 @@ class VONet(nn.Module):
 
         patches_gt = patches.clone()
         Ps = poses
-
+        # depth of patch at center
         d = patches[..., 2, p//2, p//2]
         patches = set_depth(patches, torch.rand_like(d))
 

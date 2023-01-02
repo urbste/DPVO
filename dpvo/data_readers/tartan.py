@@ -16,39 +16,10 @@ from .base import RGBDDataset
 
 test_split = [
     "abandonedfactory/abandonedfactory/Easy/P011",
-    "abandonedfactory/abandonedfactory/Hard/P011",
-    "abandonedfactory_night/abandonedfactory_night/Easy/P013",
-    "abandonedfactory_night/abandonedfactory_night/Hard/P014",
-    "amusement/amusement/Easy/P008",
-    "amusement/amusement/Hard/P007",
-    "carwelding/carwelding/Easy/P007",
-    "endofworld/endofworld/Easy/P009",
-    "gascola/gascola/Easy/P008",
-    "gascola/gascola/Hard/P009",
-    "hospital/hospital/Easy/P036",
-    "hospital/hospital/Hard/P049",
-    "japanesealley/japanesealley/Easy/P007",
-    "japanesealley/japanesealley/Hard/P005",
-    "neighborhood/neighborhood/Easy/P021",
-    "neighborhood/neighborhood/Hard/P017",
-    "ocean/ocean/Easy/P013",
-    "ocean/ocean/Hard/P009",
-    "office2/office2/Easy/P011",
-    "office2/office2/Hard/P010",
-    "office/office/Hard/P007",
-    "oldtown/oldtown/Easy/P007",
-    "oldtown/oldtown/Hard/P008",
-    "seasidetown/seasidetown/Easy/P009",
-    "seasonsforest/seasonsforest/Easy/P011",
-    "seasonsforest/seasonsforest/Hard/P006",
-    "seasonsforest_winter/seasonsforest_winter/Easy/P009",
-    "seasonsforest_winter/seasonsforest_winter/Hard/P018",
-    "soulcity/soulcity/Easy/P012",
-    "soulcity/soulcity/Hard/P009",
-    "westerndesert/westerndesert/Easy/P013",
-    "westerndesert/westerndesert/Hard/P007",
+    "amusement/amusement/Easy/P008"
 ]
 
+train_list = ["datasets/TartanAir/abandonedfactory/Easy","datasets/TartanAir/amusement/Easy"]
 
 class TartanAir(RGBDDataset):
 
@@ -94,7 +65,7 @@ class TartanAir(RGBDDataset):
 
     @staticmethod
     def calib_read():
-        return np.array([320.0, 320.0, 320.0, 240.0])
+        return np.array([320.0, 320.0, 320.0, 240.0])/2
 
     @staticmethod
     def image_read(image_file):
