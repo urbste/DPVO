@@ -15,11 +15,11 @@ from .base import RGBDDataset
 
 
 test_split = [
-    "abandonedfactory/abandonedfactory/Easy/P011",
-    "amusement/amusement/Easy/P008"
+    "carwelding/carwelding/Easy/P007"
 ]
 
-train_list = ["datasets/TartanAir/abandonedfactory/Easy","datasets/TartanAir/amusement/Easy"]
+#train_list = ["datasets/TartanAir/carwelding/Easy",
+#              "datasets/TartanAir/seasonsforest/Easy"]
 
 class TartanAir(RGBDDataset):
 

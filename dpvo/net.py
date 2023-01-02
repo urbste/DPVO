@@ -50,8 +50,10 @@ class Update(nn.Module):
             GatedResidual(DIM),
         )
 
+        # 7 -> see paper -> 7x7 integer grid
+        # 882 is the input dim
         self.corr = nn.Sequential(
-            nn.Linear(2*49*p*p, DIM),
+            nn.Linear(2*7*7*p*p, DIM),
             nn.ReLU(inplace=True),
             nn.Linear(DIM, DIM),
             nn.LayerNorm(DIM, eps=1e-3),
