@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from dpvo.net import VONet
 from evaluate_tartan import evaluate as validate
 
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 def show_image(image):
     image = image.permute(1, 2, 0).cpu().numpy()
@@ -165,7 +166,7 @@ if __name__ == '__main__':
     parser.add_argument('--steps', type=int, default=240000)
     parser.add_argument('--lr', type=float, default=0.00008)
     parser.add_argument('--clip', type=float, default=10.0)
-    parser.add_argument('--n_frames', type=int, default=7)
+    parser.add_argument('--n_frames', type=int, default=5)
     parser.add_argument('--pose_weight', type=float, default=10.0)
     parser.add_argument('--flow_weight', type=float, default=0.1)
     args = parser.parse_args()

@@ -245,9 +245,13 @@ class VONet(nn.Module):
                 n = ii.max() + 1
 
             coords = pops.transform(Gs, patches, intrinsics, ii, jj, kk)
+            print("coords.shape",coords.shape)
             coords1 = coords.permute(0, 1, 4, 2, 3).contiguous()
-
+            print("coords1.shape",coords1.shape)
             corr = corr_fn(kk, jj, coords1)
+            print(corr.shape)
+            print(net.shape)
+            print(imap[:,kk].shape)
             net, (delta, weight, _) = self.update(net, imap[:,kk], corr, None, ii, jj, kk)
 
             lmbda = 1e-4

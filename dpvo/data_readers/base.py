@@ -15,10 +15,12 @@ import os.path as osp
 from .augmentation import RGBDAugmentor
 from .rgbd_utils import *
 
+# train_list = [
+# "datasets/TartanAir/seasonsforest/seasonsforest/Easy/P002",
+# "datasets/TartanAir/carwelding/carwelding/Easy/P007"]
 train_list = [
-"datasets/TartanAir/seasonsforest/seasonsforest/Easy/P002",
-"datasets/TartanAir/carwelding/carwelding/Easy/P007"]
-
+ "datasets/TartanAir/abandonedfactory/abandonedfactory/Easy/P002",
+ "datasets/TartanAir/amusement/amusement/Easy/P007"]
 class RGBDDataset(data.Dataset):
     def __init__(self, name, datapath, n_frames=4, crop_size=[480,640], fmin=10.0, fmax=75.0, aug=True, sample=True):
         """ Base class for RGBD dataset """

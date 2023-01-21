@@ -15,7 +15,7 @@ from .base import RGBDDataset
 
 
 test_split = [
-    "carwelding/carwelding/Easy/P007"
+   "amusement/amusement/Easy/P007"
 ]
 
 #train_list = ["datasets/TartanAir/carwelding/Easy",
