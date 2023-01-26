@@ -59,8 +59,8 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--network', type=str, default='dpvo.pth')
-    parser.add_argument('--imagedir', type=str, default="")
-    parser.add_argument('--calib', type=str, default="calib/gopro9_1440_linear.txt")
+    parser.add_argument('--imagedir', type=str, default="movies/IMG_0494.MOV")
+    parser.add_argument('--calib', type=str, default="calib/iphone.txt")
     parser.add_argument('--stride', type=int, default=1)
     parser.add_argument('--skip', type=int, default=0)
     parser.add_argument('--config', default="config/default.yaml")

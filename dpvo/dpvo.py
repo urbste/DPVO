@@ -10,7 +10,8 @@ from .lietorch import SE3
 from .net import VONet
 from .utils import *
 from . import projective_ops as pops
-
+import cv2
+import matplotlib.pyplot as plt
 autocast = torch.cuda.amp.autocast
 Id = SE3.Identity(1, device="cuda")
 
@@ -39,7 +40,7 @@ class DPVO:
 
         # dummy image for visualization
         self.image_ = torch.zeros(self.ht, self.wd, 3, dtype=torch.uint8, device="cpu")
-
+        self.images_ = torch.zeros(self.N, 3, self.ht, self.wd, dtype=torch.uint8, device="cpu")
         self.tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
         self.image_tstamps_ = torch.zeros(self.N, dtype=torch.long, device="cuda")
         self.poses_ = torch.zeros(self.N, 7, dtype=torch.float, device="cuda")
@@ -255,6 +256,29 @@ class DPVO:
             net, (delta, weight, _) = \
                 self.network.update(net, ctx, corr, None, ii, jj, kk)
 
+        img_idx1 = ii[0]
+        img_idx2 = jj[0]
+
+        I1 = cv2.cvtColor(self.images_[img_idx1].permute(1,2,0).cpu().numpy(),cv2.COLOR_BGR2GRAY)
+        I2 = cv2.cvtColor(self.images_[img_idx2].permute(1,2,0).cpu().numpy(),cv2.COLOR_BGR2GRAY)
+
+        I1 = cv2.cvtColor(I1,cv2.COLOR_GRAY2RGB)
+        I2 = cv2.cvtColor(I2,cv2.COLOR_GRAY2RGB)
+
+        
+        pts1 = self.patches_[img_idx1,:,:2,self.P//2,self.P//2].cpu().numpy().squeeze()*self.RES
+        pts2 = self.patches_[img_idx2,:,:2,self.P//2,self.P//2].cpu().numpy().squeeze()*self.RES
+        pts1_in_2 = coords[0,:,:2,self.P//2,self.P//2].cpu().numpy().squeeze()*self.RES
+        pts1_in_2_update = (pts1 + delta[0].cpu().detach().numpy().squeeze()*self.RES)
+
+        for i in range(self.M):
+            x1,y1 = int(pts1[i,0]),int(pts1[i,1])
+            x2,y2 = int(pts1_in_2_update[i,0]),int(pts1_in_2_update[i,1])
+            I1 = cv2.circle(I1, (x1,y1), 5, (0,0,255), 3)
+            I2 = cv2.circle(I2, (x2,y2), 5, (0,0,255), 3)
+        conc = np.concatenate([I1,I2],1)
+        cv2.imshow("conc",conc)
+        cv2.waitKey(1000)
         return torch.quantile(delta.norm(dim=-1).float(), 0.5)
 
     def motionmag(self, i, j):
@@ -356,6 +380,8 @@ class DPVO:
 
     def __call__(self, tstamp, image, intrinsics, image_tstamp_ns):
         """ track new frame """
+
+        self.images_[self.n,...] = image
 
         if self.viewer is not None:
             self.viewer.update_image(image)

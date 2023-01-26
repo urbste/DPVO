@@ -86,11 +86,11 @@ def video_stream(queue, imagedir, calib, stride, skip=0, start_end_t_ns=[0,0]):
         if t_ns > start_end_t_ns[1] and start_end_t_ns[1] > start_end_t_ns[0]:
             break
 
-        if len(calib) > 6:
-            image = cv2.undistort(image, K, calib[6:])
+        #if len(calib) > 6:
+        #    image = cv2.undistort(image, K, calib[6:])
 
-        # image = cv2.resize(image, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-        image = cv2.resize(image, (int(Iw), int(Ih)))
+        image = cv2.resize(image, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
+        #image = cv2.resize(image, (int(Iw), int(Ih)))
         h, w, _ = image.shape
         image = image[:h-h%16, :w-w%16]
 
